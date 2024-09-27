@@ -201,8 +201,9 @@ class YPlayerState extends State<YPlayer> {
   Widget build(BuildContext context) {
     return LayoutBuilder(
       builder: (context, constraints) {
+        var aspectRatio = _aspectRatio ?? (widget.aspectRatio ?? 16 / 9);
         final playerWidth = constraints.maxWidth;
-        final playerHeight = playerWidth / _aspectRatio!;
+        final playerHeight = playerWidth / aspectRatio;
         if (_chewieController != null && _aspectRatio != null) {
           return SizedBox(
             width: playerWidth,

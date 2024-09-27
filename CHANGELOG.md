@@ -1,3 +1,7 @@
+## 1.0.1+1
+- Aspect ratio bug fix
+- Minor bug fixes and improvements
+
 ## 1.0.1
 - Added support for mute and unmute
 - Added support for fullscreen mode
