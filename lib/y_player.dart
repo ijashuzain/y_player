@@ -221,16 +221,13 @@ class YPlayerState extends State<YPlayer> {
           return SizedBox(
             height: playerHeight,
             width: playerWidth,
-            child: FittedBox(
-              fit: BoxFit.contain,
-              child: Center(
-                child: widget.loadingWidget ??
-                    const SizedBox(
-                      height: 25,
-                      width: 25,
-                      child: CircularProgressIndicator.adaptive(),
-                    ),
-              ),
+            child: Center(
+              child: widget.loadingWidget ??
+                  const SizedBox(
+                    height: 25,
+                    width: 25,
+                    child: CircularProgressIndicator.adaptive(),
+                  ),
             ),
           );
         } else if (_playerStatus == YPlayerStatus.error) {
