@@ -23,11 +23,38 @@ class YPlayer extends StatefulWidget {
   /// The URL of the YouTube video to play.
   final String youtubeUrl;
 
+  /// The aspect ratio of the video player.
+  final double? aspectRatio;
+
+  /// Whether to autoplay the video.
+  final bool autoPlay;
+
+  /// Whether to loop the video.
+  final bool allowFullScreen;
+
+  /// Whether to allow muting the video.
+  final bool allowMuting;
+
+  /// The placeholder widget to display while the video before initialized.
+  final Widget? placeholder;
+
+  /// The widget to display when the video state is loading.
+  final Widget? loadingWidget;
+
+  /// The widget to display when the video state is error.
+  final Widget? errorWidget;
+
   /// Callback function triggered when the player's status changes.
   final YPlayerStateCallback? onStateChanged;
 
   /// Callback function triggered when the player's progress changes.
   final YPlayerProgressCallback? onProgressChanged;
+
+  /// The colors to use for the progress bar [Android].
+  final ChewieProgressColors? materialProgressColors;
+
+  /// The colors to use for the progress bar [iOS].
+  final ChewieProgressColors? cupertinoProgressColors;
 
   /// Creates a new YPlayer widget.
   ///
@@ -38,6 +65,15 @@ class YPlayer extends StatefulWidget {
     required this.youtubeUrl,
     this.onStateChanged,
     this.onProgressChanged,
+    this.autoPlay = true,
+    this.allowFullScreen = true,
+    this.aspectRatio,
+    this.allowMuting = true,
+    this.placeholder,
+    this.loadingWidget,
+    this.errorWidget,
+    this.materialProgressColors,
+    this.cupertinoProgressColors,
   });
 
   @override
@@ -93,12 +129,15 @@ class YPlayerState extends State<YPlayer> {
       _aspectRatio = _videoPlayerController!.value.aspectRatio;
 
       _chewieController = ChewieController(
+        placeholder: widget.placeholder,
         videoPlayerController: _videoPlayerController!,
-        autoPlay: true,
+        autoPlay: widget.autoPlay,
         looping: false,
-        aspectRatio: _aspectRatio,
-        allowFullScreen: true,
-        allowMuting: true,
+        aspectRatio: widget.aspectRatio ?? _aspectRatio,
+        allowFullScreen: widget.allowFullScreen,
+        allowMuting: widget.allowMuting,
+        materialProgressColors: widget.materialProgressColors ?? ChewieProgressColors(),
+        cupertinoProgressColors: widget.cupertinoProgressColors ?? ChewieProgressColors(),
         showControls: true,
       );
 
@@ -162,9 +201,9 @@ class YPlayerState extends State<YPlayer> {
   Widget build(BuildContext context) {
     return LayoutBuilder(
       builder: (context, constraints) {
+        final playerWidth = constraints.maxWidth;
+        final playerHeight = playerWidth / _aspectRatio!;
         if (_chewieController != null && _aspectRatio != null) {
-          final playerWidth = constraints.maxWidth;
-          final playerHeight = playerWidth / _aspectRatio!;
           return SizedBox(
             width: playerWidth,
             height: playerHeight,
@@ -178,11 +217,29 @@ class YPlayerState extends State<YPlayer> {
             ),
           );
         } else if (_playerStatus == YPlayerStatus.loading) {
-          return const Center(child: CircularProgressIndicator());
+          return SizedBox(
+            height: playerHeight,
+            width: playerWidth,
+            child: FittedBox(
+              fit: BoxFit.contain,
+              child: Center(
+                child: widget.loadingWidget ?? const CircularProgressIndicator.adaptive(),
+              ),
+            ),
+          );
         } else if (_playerStatus == YPlayerStatus.error) {
-          return const Center(child: Text('Error loading video'));
+          return SizedBox(
+            height: playerHeight,
+            width: playerWidth,
+            child: FittedBox(
+              fit: BoxFit.contain,
+              child: Center(
+                child: widget.errorWidget ?? const Text('Error loading video'),
+              ),
+            ),
+          );
         } else {
-          return Container(); // Placeholder for initial state
+          return Container();
         }
       },
     );

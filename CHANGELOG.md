@@ -1,3 +1,11 @@
+## 1.0.1
+- Added support for mute and unmute
+- Added support for fullscreen mode
+- Added support for customize error and loading widgets
+- Added support for customize placeholder widget
+- Added support for customize progress colors
+- Minor bug fixes and improvements
+
 ## 1.0.0
 - Play YouTube videos directly in your Flutter app
 - Responsive layout that adapts to different screen sizes
