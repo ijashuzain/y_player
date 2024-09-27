@@ -1,5 +1,7 @@
 # YPlayer
 
+![Logo](https://raw.githubusercontent.com/ijashuzain/y_player/main/misc/banner.png)
+
 YPlayer is a Flutter package that provides an easy-to-use YouTube video player widget. It leverages the power of the `youtube_explode_dart` package for fetching video information and the `chewie` package for a customizable video player interface.
 
 ## Features
