@@ -1,3 +1,7 @@
+## 1.0.1+2
+- Loader size bug fix
+- Minor bug fixes and improvements
+
 ## 1.0.1+1
 - Aspect ratio bug fix
 - Minor bug fixes and improvements

@@ -224,7 +224,12 @@ class YPlayerState extends State<YPlayer> {
             child: FittedBox(
               fit: BoxFit.contain,
               child: Center(
-                child: widget.loadingWidget ?? const CircularProgressIndicator.adaptive(),
+                child: widget.loadingWidget ??
+                    const SizedBox(
+                      height: 25,
+                      width: 25,
+                      child: CircularProgressIndicator.adaptive(),
+                    ),
               ),
             ),
           );
