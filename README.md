@@ -7,8 +7,13 @@ YPlayer is a Flutter package that provides an easy-to-use YouTube video player w
 - Play YouTube videos directly in your Flutter app
 - Responsive layout that adapts to different screen sizes
 - Support for fullscreen mode
+- Customizable aspect ratio
+- Optional autoplay
+- Muting control
+- Customizable loading and error widgets
 - Easy to use API with play, pause, and stop functionality
 - Callback support for player state changes and progress updates
+- Customizable progress bar colors for Android and iOS
 
 ## Installation
 
@@ -16,7 +21,7 @@ Add `y_player` to your `pubspec.yaml` file:
 
 ```yaml
 dependencies:
-  y_player: ^1.0.0
+  y_player: ^1.0.2
 ```
 
 Then run:
@@ -70,7 +75,6 @@ class _MyVideoPlayerPageState extends State<MyVideoPlayerPage> {
   void initState() {
     super.initState();
     _yPlayer = YPlayer(
-      key: GlobalKey<YPlayerState>(),
       youtubeUrl: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ',
     );
     _controller = _yPlayer.getController();
@@ -117,15 +121,33 @@ Constructor:
 YPlayer({
   Key? key,
   required String youtubeUrl,
+  double? aspectRatio,
+  bool autoPlay = true,
+  bool allowFullScreen = true,
+  bool allowMuting = true,
+  Widget? placeholder,
+  Widget? loadingWidget,
+  Widget? errorWidget,
   YPlayerStateCallback? onStateChanged,
   YPlayerProgressCallback? onProgressChanged,
+  ChewieProgressColors? materialProgressColors,
+  ChewieProgressColors? cupertinoProgressColors,
 })
 ```
 
 Properties:
 - `youtubeUrl`: The URL of the YouTube video to play.
+- `aspectRatio`: The aspect ratio of the video player. If null, it uses the video's natural aspect ratio.
+- `autoPlay`: Whether to autoplay the video when it's ready.
+- `allowFullScreen`: Whether to allow fullscreen mode.
+- `allowMuting`: Whether to allow muting the video.
+- `placeholder`: The placeholder widget to display before the video is initialized.
+- `loadingWidget`: The widget to display when the video is loading.
+- `errorWidget`: The widget to display when there's an error loading the video.
 - `onStateChanged`: Callback function triggered when the player's status changes.
 - `onProgressChanged`: Callback function triggered when the player's progress changes.
+- `materialProgressColors`: The colors to use for the progress bar on Android.
+- `cupertinoProgressColors`: The colors to use for the progress bar on iOS.
 
 ### YPlayerController
 

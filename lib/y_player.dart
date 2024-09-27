@@ -2,6 +2,7 @@ library y_player;
 
 import 'package:chewie/chewie.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:video_player/video_player.dart';
 import 'package:y_player/y_player_controller.dart';
 import 'package:youtube_explode_dart/youtube_explode_dart.dart';
@@ -13,7 +14,8 @@ enum YPlayerStatus { initial, loading, playing, paused, stopped, error }
 typedef YPlayerStateCallback = void Function(YPlayerStatus status);
 
 /// Callback signature for when the player's progress changes.
-typedef YPlayerProgressCallback = void Function(Duration position, Duration duration);
+typedef YPlayerProgressCallback = void Function(
+    Duration position, Duration duration);
 
 /// A widget that plays YouTube videos.
 ///
@@ -23,25 +25,25 @@ class YPlayer extends StatefulWidget {
   /// The URL of the YouTube video to play.
   final String youtubeUrl;
 
-  /// The aspect ratio of the video player.
+  /// The aspect ratio of the video player. If null, it uses the video's natural aspect ratio.
   final double? aspectRatio;
 
-  /// Whether to autoplay the video.
+  /// Whether to autoplay the video when it's ready.
   final bool autoPlay;
 
-  /// Whether to loop the video.
+  /// Whether to allow fullscreen mode.
   final bool allowFullScreen;
 
   /// Whether to allow muting the video.
   final bool allowMuting;
 
-  /// The placeholder widget to display while the video before initialized.
+  /// The placeholder widget to display before the video is initialized.
   final Widget? placeholder;
 
-  /// The widget to display when the video state is loading.
+  /// The widget to display when the video is loading.
   final Widget? loadingWidget;
 
-  /// The widget to display when the video state is error.
+  /// The widget to display when there's an error loading the video.
   final Widget? errorWidget;
 
   /// Callback function triggered when the player's status changes.
@@ -50,16 +52,15 @@ class YPlayer extends StatefulWidget {
   /// Callback function triggered when the player's progress changes.
   final YPlayerProgressCallback? onProgressChanged;
 
-  /// The colors to use for the progress bar [Android].
+  /// The colors to use for the progress bar on Android.
   final ChewieProgressColors? materialProgressColors;
 
-  /// The colors to use for the progress bar [iOS].
+  /// The colors to use for the progress bar on iOS.
   final ChewieProgressColors? cupertinoProgressColors;
 
   /// Creates a new YPlayer widget.
   ///
   /// [youtubeUrl] is required and should be a valid YouTube video URL.
-  /// [onStateChanged] and [onProgressChanged] are optional callbacks.
   const YPlayer({
     super.key,
     required this.youtubeUrl,
@@ -87,10 +88,17 @@ class YPlayer extends StatefulWidget {
 
 /// The state for the YPlayer widget.
 class YPlayerState extends State<YPlayer> {
+  // YouTube API client
   final YoutubeExplode _yt = YoutubeExplode();
+
+  // Controllers for video playback
   VideoPlayerController? _videoPlayerController;
   ChewieController? _chewieController;
+
+  // Current status of the player
   YPlayerStatus _playerStatus = YPlayerStatus.initial;
+
+  // Aspect ratio of the video
   double? _aspectRatio;
 
   @override
@@ -102,6 +110,7 @@ class YPlayerState extends State<YPlayer> {
   @override
   void didUpdateWidget(YPlayer oldWidget) {
     super.didUpdateWidget(oldWidget);
+    // Reinitialize the player if the URL changes
     if (widget.youtubeUrl != oldWidget.youtubeUrl) {
       _initializePlayer();
     }
@@ -119,15 +128,19 @@ class YPlayerState extends State<YPlayer> {
   void _initializePlayer() async {
     _setPlayerStatus(YPlayerStatus.loading);
     try {
+      // Fetch video information and get the highest quality stream
       final video = await _yt.videos.get(widget.youtubeUrl);
       final manifest = await _yt.videos.streamsClient.getManifest(video.id);
       final streamInfo = manifest.muxed.withHighestBitrate();
 
-      _videoPlayerController = VideoPlayerController.networkUrl(Uri.parse(streamInfo.url.toString()));
+      // Initialize video player controller
+      _videoPlayerController = VideoPlayerController.networkUrl(
+          Uri.parse(streamInfo.url.toString()));
       await _videoPlayerController!.initialize();
 
       _aspectRatio = _videoPlayerController!.value.aspectRatio;
 
+      // Initialize Chewie controller
       _chewieController = ChewieController(
         placeholder: widget.placeholder,
         videoPlayerController: _videoPlayerController!,
@@ -136,9 +149,21 @@ class YPlayerState extends State<YPlayer> {
         aspectRatio: widget.aspectRatio ?? _aspectRatio,
         allowFullScreen: widget.allowFullScreen,
         allowMuting: widget.allowMuting,
-        materialProgressColors: widget.materialProgressColors ?? ChewieProgressColors(),
-        cupertinoProgressColors: widget.cupertinoProgressColors ?? ChewieProgressColors(),
+        materialProgressColors:
+            widget.materialProgressColors ?? ChewieProgressColors(),
+        cupertinoProgressColors:
+            widget.cupertinoProgressColors ?? ChewieProgressColors(),
         showControls: true,
+        deviceOrientationsAfterFullScreen: [
+          DeviceOrientation.portraitUp,
+          DeviceOrientation.portraitDown,
+        ],
+        systemOverlaysAfterFullScreen: SystemUiOverlay.values,
+        deviceOrientationsOnEnterFullScreen: [
+          DeviceOrientation.landscapeLeft,
+          DeviceOrientation.landscapeRight,
+        ],
+        systemOverlaysOnEnterFullScreen: [],
       );
 
       _videoPlayerController!.addListener(_videoListener);
@@ -192,10 +217,12 @@ class YPlayerState extends State<YPlayer> {
   YPlayerStatus get playerStatus => _playerStatus;
 
   /// Gets the current playback position.
-  Duration get position => _videoPlayerController?.value.position ?? Duration.zero;
+  Duration get position =>
+      _videoPlayerController?.value.position ?? Duration.zero;
 
   /// Gets the total duration of the video.
-  Duration get duration => _videoPlayerController?.value.duration ?? Duration.zero;
+  Duration get duration =>
+      _videoPlayerController?.value.duration ?? Duration.zero;
 
   @override
   Widget build(BuildContext context) {
@@ -205,6 +232,7 @@ class YPlayerState extends State<YPlayer> {
         final playerWidth = constraints.maxWidth;
         final playerHeight = playerWidth / aspectRatio;
         if (_chewieController != null && _aspectRatio != null) {
+          // Video is ready to play
           return SizedBox(
             width: playerWidth,
             height: playerHeight,
@@ -218,6 +246,7 @@ class YPlayerState extends State<YPlayer> {
             ),
           );
         } else if (_playerStatus == YPlayerStatus.loading) {
+          // Show loading widget
           return SizedBox(
             height: playerHeight,
             width: playerWidth,
@@ -231,6 +260,7 @@ class YPlayerState extends State<YPlayer> {
             ),
           );
         } else if (_playerStatus == YPlayerStatus.error) {
+          // Show error widget
           return SizedBox(
             height: playerHeight,
             width: playerWidth,
@@ -242,6 +272,7 @@ class YPlayerState extends State<YPlayer> {
             ),
           );
         } else {
+          // Default empty container
           return Container();
         }
       },
