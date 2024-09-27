@@ -1,4 +1,7 @@
 ## 1.0.2
+- Minor bug fixes and improvements
+
+## 1.0.2
 - Full screen mode bug fixes
 - Minor bug fixes and improvements
 

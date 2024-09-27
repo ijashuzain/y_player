@@ -23,7 +23,7 @@ Add `y_player` to your `pubspec.yaml` file:
 
 ```yaml
 dependencies:
-  y_player: ^1.0.2
+  y_player: ^1.0.2+1
 ```
 
 Then run:
