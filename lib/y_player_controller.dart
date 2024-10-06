@@ -34,7 +34,8 @@ class YPlayerController {
   YPlayerController({this.onStateChanged, this.onProgressChanged});
 
   /// Whether the player has been initialized.
-  bool get isInitialized => _chewieController != null && _videoPlayerController != null;
+  bool get isInitialized =>
+      _chewieController != null && _videoPlayerController != null;
 
   /// The current status of the player.
   YPlayerStatus get status => _status;
@@ -84,8 +85,10 @@ class YPlayerController {
         aspectRatio: aspectRatio ?? videoAspectRatio,
         allowFullScreen: allowFullScreen,
         allowMuting: allowMuting,
-        materialProgressColors: materialProgressColors ?? ChewieProgressColors(),
-        cupertinoProgressColors: cupertinoProgressColors ?? ChewieProgressColors(),
+        materialProgressColors:
+            materialProgressColors ?? ChewieProgressColors(),
+        cupertinoProgressColors:
+            cupertinoProgressColors ?? ChewieProgressColors(),
         showControls: true,
         errorBuilder: (context, errorMessage) {
           return Center(
@@ -151,10 +154,12 @@ class YPlayerController {
   }
 
   /// Gets the current playback position.
-  Duration get position => _videoPlayerController?.value.position ?? Duration.zero;
+  Duration get position =>
+      _videoPlayerController?.value.position ?? Duration.zero;
 
   /// Gets the total duration of the video.
-  Duration get duration => _videoPlayerController?.value.duration ?? Duration.zero;
+  Duration get duration =>
+      _videoPlayerController?.value.duration ?? Duration.zero;
 
   /// Disposes of the current video player and Chewie controllers.
   Future<void> _disposeControllers() async {

@@ -11,7 +11,8 @@ enum YPlayerStatus { initial, loading, playing, paused, stopped, error }
 typedef YPlayerStateCallback = void Function(YPlayerStatus status);
 
 /// Callback signature for when the player's progress changes.
-typedef YPlayerProgressCallback = void Function(Duration position, Duration duration);
+typedef YPlayerProgressCallback = void Function(
+    Duration position, Duration duration);
 
 /// A widget that plays YouTube videos.
 ///
