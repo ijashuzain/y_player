@@ -1,4 +1,15 @@
-## 1.0.2
+# Changelog
+
+## 1.1.0
+- Introduced new controller-based functionality for improved state management
+- Enhanced handling of app lifecycle changes and fullscreen mode
+- Added `onControllerReady` callback to `YPlayer` widget
+- Improved error handling and recovery
+- Deprecated `getController()` method in favor of `onControllerReady` callback
+- Added `isInitialized` property to `YPlayerController`
+- Improved documentation and usage examples
+
+## 1.0.2+1
 - Minor bug fixes and improvements
 
 ## 1.0.2
