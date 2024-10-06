@@ -16,6 +16,8 @@ YPlayer is a Flutter package that provides an easy-to-use YouTube video player w
 - Easy to use API with play, pause, and stop functionality
 - Callback support for player state changes and progress updates
 - Customizable progress bar colors for Android and iOS
+- Improved handling of app lifecycle changes and fullscreen mode
+- Enhanced error handling and recovery
 
 ## Installation
 
@@ -23,7 +25,7 @@ Add `y_player` to your `pubspec.yaml` file:
 
 ```yaml
 dependencies:
-  y_player: ^1.0.2+1
+  y_player: ^1.1.0
 ```
 
 Then run:
@@ -53,6 +55,9 @@ class MyVideoPlayer extends StatelessWidget {
         onProgressChanged: (position, duration) {
           print('Progress: ${position.inSeconds}/${duration.inSeconds}');
         },
+        onControllerReady: (controller) {
+          print('Controller is ready!');
+        },
       ),
     );
   }
@@ -71,15 +76,19 @@ class MyVideoPlayerPage extends StatefulWidget {
 
 class _MyVideoPlayerPageState extends State<MyVideoPlayerPage> {
   late YPlayer _yPlayer;
-  late YPlayerController _controller;
+  YPlayerController? _controller;
 
   @override
   void initState() {
     super.initState();
     _yPlayer = YPlayer(
       youtubeUrl: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ',
+      onControllerReady: (controller) {
+        setState(() {
+          _controller = controller;
+        });
+      },
     );
-    _controller = _yPlayer.getController();
   }
 
   @override
@@ -93,15 +102,15 @@ class _MyVideoPlayerPageState extends State<MyVideoPlayerPage> {
             mainAxisAlignment: MainAxisAlignment.spaceEvenly,
             children: [
               ElevatedButton(
-                onPressed: _controller.play,
+                onPressed: () => _controller?.play(),
                 child: Text('Play'),
               ),
               ElevatedButton(
-                onPressed: _controller.pause,
+                onPressed: () => _controller?.pause(),
                 child: Text('Pause'),
               ),
               ElevatedButton(
-                onPressed: _controller.stop,
+                onPressed: () => _controller?.stop(),
                 child: Text('Stop'),
               ),
             ],
@@ -112,6 +121,50 @@ class _MyVideoPlayerPageState extends State<MyVideoPlayerPage> {
   }
 }
 ```
+
+## Migrating to 1.1.0
+
+Version 1.1.0 introduces a new controller-based functionality that improves handling of app lifecycle changes and fullscreen mode. Here are the key changes:
+
+1. The `YPlayer` widget now has an `onControllerReady` callback that provides the `YPlayerController` when it's fully initialized.
+
+2. Instead of calling `getController()` on the `YPlayer` instance, you should now use the `onControllerReady` callback to get the controller.
+
+3. The `YPlayerController` is now more robust, handling re-initialization when the app comes back from the background or exits fullscreen mode.
+
+To migrate your existing code:
+
+```dart
+// Old way
+late YPlayer _yPlayer;
+late YPlayerController _controller;
+
+@override
+void initState() {
+  super.initState();
+  _yPlayer = YPlayer(youtubeUrl: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ');
+  _controller = _yPlayer.getController();
+}
+
+// New way
+late YPlayer _yPlayer;
+YPlayerController? _controller;
+
+@override
+void initState() {
+  super.initState();
+  _yPlayer = YPlayer(
+    youtubeUrl: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ',
+    onControllerReady: (controller) {
+      setState(() {
+        _controller = controller;
+      });
+    },
+  );
+}
+```
+
+Make sure to null-check the controller before using it, as it might not be immediately available.
 
 ## API Reference
 
@@ -132,6 +185,7 @@ YPlayer({
   Widget? errorWidget,
   YPlayerStateCallback? onStateChanged,
   YPlayerProgressCallback? onProgressChanged,
+  Function(YPlayerController controller)? onControllerReady,
   ChewieProgressColors? materialProgressColors,
   ChewieProgressColors? cupertinoProgressColors,
 })
@@ -148,6 +202,7 @@ Properties:
 - `errorWidget`: The widget to display when there's an error loading the video.
 - `onStateChanged`: Callback function triggered when the player's status changes.
 - `onProgressChanged`: Callback function triggered when the player's progress changes.
+- `onControllerReady`: Callback function triggered when the player controller is ready.
 - `materialProgressColors`: The colors to use for the progress bar on Android.
 - `cupertinoProgressColors`: The colors to use for the progress bar on iOS.
 
@@ -162,6 +217,7 @@ Properties:
 - `status`: Gets the current status of the player (YPlayerStatus enum).
 - `position`: Gets the current playback position (Duration).
 - `duration`: Gets the total duration of the video (Duration).
+- `isInitialized`: Returns true if the player is fully initialized.
 
 ## Contributing
 

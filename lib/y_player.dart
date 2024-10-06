@@ -1,11 +1,8 @@
 library y_player;
 
-import 'package:chewie/chewie.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
-import 'package:video_player/video_player.dart';
+import 'package:chewie/chewie.dart';
 import 'package:y_player/y_player_controller.dart';
-import 'package:youtube_explode_dart/youtube_explode_dart.dart';
 
 /// Represents the current status of the YPlayer.
 enum YPlayerStatus { initial, loading, playing, paused, stopped, error }
@@ -14,13 +11,13 @@ enum YPlayerStatus { initial, loading, playing, paused, stopped, error }
 typedef YPlayerStateCallback = void Function(YPlayerStatus status);
 
 /// Callback signature for when the player's progress changes.
-typedef YPlayerProgressCallback = void Function(
-    Duration position, Duration duration);
+typedef YPlayerProgressCallback = void Function(Duration position, Duration duration);
 
 /// A widget that plays YouTube videos.
 ///
 /// This widget uses the youtube_explode_dart package to fetch video information
-/// and the chewie package for the video player interface.
+/// and the chewie package for the video player interface. It handles various
+/// scenarios including app lifecycle changes and fullscreen mode.
 class YPlayer extends StatefulWidget {
   /// The URL of the YouTube video to play.
   final String youtubeUrl;
@@ -58,195 +55,116 @@ class YPlayer extends StatefulWidget {
   /// The colors to use for the progress bar on iOS.
   final ChewieProgressColors? cupertinoProgressColors;
 
-  /// Creates a new YPlayer widget.
-  ///
-  /// [youtubeUrl] is required and should be a valid YouTube video URL.
+  /// Callback function triggered when the player controller is ready.
+  final Function(YPlayerController controller)? onControllerReady;
+
   const YPlayer({
-    super.key,
+    Key? key,
     required this.youtubeUrl,
-    this.onStateChanged,
-    this.onProgressChanged,
+    this.aspectRatio,
     this.autoPlay = true,
     this.allowFullScreen = true,
-    this.aspectRatio,
     this.allowMuting = true,
     this.placeholder,
     this.loadingWidget,
     this.errorWidget,
+    this.onStateChanged,
+    this.onProgressChanged,
     this.materialProgressColors,
     this.cupertinoProgressColors,
-  });
+    this.onControllerReady,
+  }) : super(key: key);
 
   @override
   YPlayerState createState() => YPlayerState();
-
-  /// Creates and returns a controller for this YPlayer instance.
-  YPlayerController getController() {
-    return YPlayerController(this);
-  }
 }
 
 /// The state for the YPlayer widget.
-class YPlayerState extends State<YPlayer> {
-  // YouTube API client
-  final YoutubeExplode _yt = YoutubeExplode();
+///
+/// This class manages the lifecycle of the video player and handles
+/// app lifecycle events to ensure proper initialization and disposal.
+class YPlayerState extends State<YPlayer> with WidgetsBindingObserver {
+  /// The controller for managing the YouTube player.
+  late YPlayerController _controller;
 
-  // Controllers for video playback
-  VideoPlayerController? _videoPlayerController;
-  ChewieController? _chewieController;
-
-  // Current status of the player
-  YPlayerStatus _playerStatus = YPlayerStatus.initial;
-
-  // Aspect ratio of the video
-  double? _aspectRatio;
+  /// Flag to indicate whether the controller is fully initialized and ready.
+  bool _isControllerReady = false;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _controller = YPlayerController(
+      onStateChanged: widget.onStateChanged,
+      onProgressChanged: widget.onProgressChanged,
+    );
     _initializePlayer();
   }
 
+  /// Handles app lifecycle state changes.
+  ///
+  /// If the app is resumed, it checks if the player needs to be reinitialized.
   @override
-  void didUpdateWidget(YPlayer oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    // Reinitialize the player if the URL changes
-    if (widget.youtubeUrl != oldWidget.youtubeUrl) {
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _reinitializePlayerIfNeeded();
+    }
+  }
+
+  /// Initializes the video player with the provided YouTube URL and settings.
+  void _initializePlayer() async {
+    await _controller.initialize(
+      widget.youtubeUrl,
+      autoPlay: widget.autoPlay,
+      aspectRatio: widget.aspectRatio,
+      allowFullScreen: widget.allowFullScreen,
+      allowMuting: widget.allowMuting,
+      materialProgressColors: widget.materialProgressColors,
+      cupertinoProgressColors: widget.cupertinoProgressColors,
+    );
+    if (mounted) {
+      setState(() {
+        _isControllerReady = true;
+      });
+      if (widget.onControllerReady != null) {
+        widget.onControllerReady!(_controller);
+      }
+    }
+  }
+
+  /// Reinitializes the player if it's not currently initialized.
+  ///
+  /// This is typically called when the app resumes from the background.
+  void _reinitializePlayerIfNeeded() {
+    if (!_controller.isInitialized) {
       _initializePlayer();
     }
   }
 
   @override
   void dispose() {
-    _videoPlayerController?.dispose();
-    _chewieController?.dispose();
-    _yt.close();
+    WidgetsBinding.instance.removeObserver(this);
+    _controller.dispose();
     super.dispose();
   }
-
-  /// Initializes the video player with the YouTube video.
-  void _initializePlayer() async {
-    _setPlayerStatus(YPlayerStatus.loading);
-    try {
-      // Fetch video information and get the highest quality stream
-      final video = await _yt.videos.get(widget.youtubeUrl);
-      final manifest = await _yt.videos.streamsClient.getManifest(video.id);
-      final streamInfo = manifest.muxed.withHighestBitrate();
-
-      // Initialize video player controller
-      _videoPlayerController = VideoPlayerController.networkUrl(
-          Uri.parse(streamInfo.url.toString()));
-      await _videoPlayerController!.initialize();
-
-      _aspectRatio = _videoPlayerController!.value.aspectRatio;
-
-      // Initialize Chewie controller
-      _chewieController = ChewieController(
-        placeholder: widget.placeholder,
-        videoPlayerController: _videoPlayerController!,
-        autoPlay: widget.autoPlay,
-        looping: false,
-        aspectRatio: widget.aspectRatio ?? _aspectRatio,
-        allowFullScreen: widget.allowFullScreen,
-        allowMuting: widget.allowMuting,
-        materialProgressColors:
-            widget.materialProgressColors ?? ChewieProgressColors(),
-        cupertinoProgressColors:
-            widget.cupertinoProgressColors ?? ChewieProgressColors(),
-        showControls: true,
-        deviceOrientationsAfterFullScreen: [
-          DeviceOrientation.portraitUp,
-          DeviceOrientation.portraitDown,
-        ],
-        systemOverlaysAfterFullScreen: SystemUiOverlay.values,
-        deviceOrientationsOnEnterFullScreen: [
-          DeviceOrientation.landscapeLeft,
-          DeviceOrientation.landscapeRight,
-        ],
-        systemOverlaysOnEnterFullScreen: [],
-      );
-
-      _videoPlayerController!.addListener(_videoListener);
-
-      _setPlayerStatus(YPlayerStatus.playing);
-    } catch (e) {
-      _setPlayerStatus(YPlayerStatus.error);
-    }
-    setState(() {});
-  }
-
-  /// Listener for video player events.
-  void _videoListener() {
-    final playerValue = _videoPlayerController!.value;
-    if (playerValue.isPlaying) {
-      _setPlayerStatus(YPlayerStatus.playing);
-    } else if (playerValue.position >= playerValue.duration) {
-      _setPlayerStatus(YPlayerStatus.stopped);
-    } else {
-      _setPlayerStatus(YPlayerStatus.paused);
-    }
-
-    widget.onProgressChanged?.call(playerValue.position, playerValue.duration);
-  }
-
-  /// Updates the player status and triggers the onStateChanged callback.
-  void _setPlayerStatus(YPlayerStatus newStatus) {
-    if (_playerStatus != newStatus) {
-      _playerStatus = newStatus;
-      widget.onStateChanged?.call(_playerStatus);
-    }
-  }
-
-  /// Starts or resumes video playback.
-  void play() {
-    _videoPlayerController?.play();
-  }
-
-  /// Pauses video playback.
-  void pause() {
-    _videoPlayerController?.pause();
-  }
-
-  /// Stops video playback and resets to the beginning.
-  void stop() {
-    _videoPlayerController?.pause();
-    _videoPlayerController?.seekTo(Duration.zero);
-  }
-
-  /// Gets the current status of the player.
-  YPlayerStatus get playerStatus => _playerStatus;
-
-  /// Gets the current playback position.
-  Duration get position =>
-      _videoPlayerController?.value.position ?? Duration.zero;
-
-  /// Gets the total duration of the video.
-  Duration get duration =>
-      _videoPlayerController?.value.duration ?? Duration.zero;
 
   @override
   Widget build(BuildContext context) {
     return LayoutBuilder(
       builder: (context, constraints) {
-        var aspectRatio = _aspectRatio ?? (widget.aspectRatio ?? 16 / 9);
+        final aspectRatio = widget.aspectRatio ?? 16 / 9;
         final playerWidth = constraints.maxWidth;
         final playerHeight = playerWidth / aspectRatio;
-        if (_chewieController != null && _aspectRatio != null) {
-          // Video is ready to play
+
+        if (_isControllerReady && _controller.isInitialized) {
+          // Display the video player when initialized
           return SizedBox(
             width: playerWidth,
             height: playerHeight,
-            child: FittedBox(
-              fit: BoxFit.contain,
-              child: SizedBox(
-                width: playerWidth,
-                height: playerHeight,
-                child: Chewie(controller: _chewieController!),
-              ),
-            ),
+            child: Chewie(controller: _controller.chewieController!),
           );
-        } else if (_playerStatus == YPlayerStatus.loading) {
-          // Show loading widget
+        } else if (_controller.status == YPlayerStatus.loading) {
+          // Display loading widget while the player is initializing
           return SizedBox(
             height: playerHeight,
             width: playerWidth,
@@ -259,20 +177,17 @@ class YPlayerState extends State<YPlayer> {
                   ),
             ),
           );
-        } else if (_playerStatus == YPlayerStatus.error) {
-          // Show error widget
+        } else if (_controller.status == YPlayerStatus.error) {
+          // Display error widget if there was an error initializing the player
           return SizedBox(
             height: playerHeight,
             width: playerWidth,
-            child: FittedBox(
-              fit: BoxFit.contain,
-              child: Center(
-                child: widget.errorWidget ?? const Text('Error loading video'),
-              ),
+            child: Center(
+              child: widget.errorWidget ?? const Text('Error loading video'),
             ),
           );
         } else {
-          // Default empty container
+          // Display an empty container in other cases
           return Container();
         }
       },
