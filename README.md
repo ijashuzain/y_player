@@ -1,3 +1,4 @@
+![Pub](https://img.shields.io/pub/v/y_player.svg)
 # YPlayer
 
 ![Logo](https://raw.githubusercontent.com/ijashuzain/y_player/main/misc/banner.png)
