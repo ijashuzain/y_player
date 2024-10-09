@@ -1,24 +1,23 @@
-![Pub](https://img.shields.io/pub/v/y_player.svg)
 # YPlayer
+
+![Pub](https://img.shields.io/pub/v/y_player.svg)
 
 ![Logo](https://raw.githubusercontent.com/ijashuzain/y_player/main/misc/banner.png)
 
-YPlayer is a Flutter package that provides an easy-to-use YouTube video player widget. It leverages the power of the `youtube_explode_dart` package for fetching video information and the `chewie` package for a customizable video player interface.
+YPlayer is a Flutter package that provides an easy-to-use YouTube video player widget. It leverages the power of the `youtube_explode_dart` package for fetching video information.
 
 ## Features
 
 - Play YouTube videos directly in your Flutter app
-- Responsive layout that adapts to different screen sizes
 - Support for fullscreen mode
-- Customizable aspect ratio
 - Optional autoplay
-- Muting control
 - Customizable loading and error widgets
 - Easy to use API with play, pause, and stop functionality
 - Callback support for player state changes and progress updates
-- Customizable progress bar colors for Android and iOS
+- Customizable progress bar colors
 - Improved handling of app lifecycle changes and fullscreen mode
 - Enhanced error handling and recovery
+- Separate handling of video and audio streams for better quality
 
 ## Installation
 
@@ -26,7 +25,7 @@ Add `y_player` to your `pubspec.yaml` file:
 
 ```yaml
 dependencies:
-  y_player: ^1.1.0
+  y_player: ^2.0.0
 ```
 
 Then run:
@@ -36,6 +35,18 @@ flutter pub get
 ```
 
 ## Usage
+
+First, ensure that you initialize the YPlayer in your `main.dart`:
+
+```dart
+import 'package:flutter/material.dart';
+import 'package:y_player/y_player.dart';
+
+void main() {
+  YPlayerInitializer.ensureInitialized();
+  runApp(MyApp());
+}
+```
 
 Here's a simple example of how to use YPlayer in your Flutter app:
 
@@ -65,107 +76,36 @@ class MyVideoPlayer extends StatelessWidget {
 }
 ```
 
-### Using YPlayerController
+## Migrating to 2.0.0
 
-You can get more control over the player by using `YPlayerController`:
-
-```dart
-class MyVideoPlayerPage extends StatefulWidget {
-  @override
-  _MyVideoPlayerPageState createState() => _MyVideoPlayerPageState();
-}
-
-class _MyVideoPlayerPageState extends State<MyVideoPlayerPage> {
-  late YPlayer _yPlayer;
-  YPlayerController? _controller;
-
-  @override
-  void initState() {
-    super.initState();
-    _yPlayer = YPlayer(
-      youtubeUrl: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ',
-      onControllerReady: (controller) {
-        setState(() {
-          _controller = controller;
-        });
-      },
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: Text('YPlayer Controller Example')),
-      body: Column(
-        children: [
-          Expanded(child: _yPlayer),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-            children: [
-              ElevatedButton(
-                onPressed: () => _controller?.play(),
-                child: Text('Play'),
-              ),
-              ElevatedButton(
-                onPressed: () => _controller?.pause(),
-                child: Text('Pause'),
-              ),
-              ElevatedButton(
-                onPressed: () => _controller?.stop(),
-                child: Text('Stop'),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-}
-```
-
-## Migrating to 1.1.0
-
-Version 1.1.0 introduces a new controller-based functionality that improves handling of app lifecycle changes and fullscreen mode. Here are the key changes:
-
-1. The `YPlayer` widget now has an `onControllerReady` callback that provides the `YPlayerController` when it's fully initialized.
-
-2. Instead of calling `getController()` on the `YPlayer` instance, you should now use the `onControllerReady` callback to get the controller.
-
-3. The `YPlayerController` is now more robust, handling re-initialization when the app comes back from the background or exits fullscreen mode.
+Version 2.0.0 introduces significant changes to address the deprecation of muxed streams in YouTube and to improve overall performance. Here are the key changes:
 
 To migrate your existing code:
 
+1. Update your `pubspec.yaml` to use version 2.0.0 or later of `y_player`.
+
+2. In your `main.dart`, add the initialization call:
+
 ```dart
-// Old way
-late YPlayer _yPlayer;
-late YPlayerController _controller;
-
-@override
-void initState() {
-  super.initState();
-  _yPlayer = YPlayer(youtubeUrl: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ');
-  _controller = _yPlayer.getController();
-}
-
-// New way
-late YPlayer _yPlayer;
-YPlayerController? _controller;
-
-@override
-void initState() {
-  super.initState();
-  _yPlayer = YPlayer(
-    youtubeUrl: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ',
-    onControllerReady: (controller) {
-      setState(() {
-        _controller = controller;
-      });
-    },
-  );
+void main() {
+  YPlayerInitializer.ensureInitialized();
+  runApp(MyApp());
 }
 ```
 
-Make sure to null-check the controller before using it, as it might not be immediately available.
+3. Update your `YPlayer` widget usage. The basic usage remains the same, but some properties have changed:
+
+```dart
+YPlayer(
+  youtubeUrl: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ',
+  color: Colors.red, // New property for customizing controls color
+  // materialProgressColors and cupertinoProgressColors are no longer available
+)
+```
+
+4. If you were using `ChewieController` directly, you'll need to update to use `YPlayerController` instead.
+
+These changes address the deprecation of muxed streams in YouTube and provide a more robust and efficient video playback experience. The separate handling of video and audio streams allows for better quality options and more flexibility in playback.
 
 ## API Reference
 
@@ -179,33 +119,15 @@ YPlayer({
   required String youtubeUrl,
   double? aspectRatio,
   bool autoPlay = true,
-  bool allowFullScreen = true,
-  bool allowMuting = true,
+  Color? color,
   Widget? placeholder,
   Widget? loadingWidget,
   Widget? errorWidget,
   YPlayerStateCallback? onStateChanged,
   YPlayerProgressCallback? onProgressChanged,
   Function(YPlayerController controller)? onControllerReady,
-  ChewieProgressColors? materialProgressColors,
-  ChewieProgressColors? cupertinoProgressColors,
 })
 ```
-
-Properties:
-- `youtubeUrl`: The URL of the YouTube video to play.
-- `aspectRatio`: The aspect ratio of the video player. If null, it uses the video's natural aspect ratio.
-- `autoPlay`: Whether to autoplay the video when it's ready.
-- `allowFullScreen`: Whether to allow fullscreen mode.
-- `allowMuting`: Whether to allow muting the video.
-- `placeholder`: The placeholder widget to display before the video is initialized.
-- `loadingWidget`: The widget to display when the video is loading.
-- `errorWidget`: The widget to display when there's an error loading the video.
-- `onStateChanged`: Callback function triggered when the player's status changes.
-- `onProgressChanged`: Callback function triggered when the player's progress changes.
-- `onControllerReady`: Callback function triggered when the player controller is ready.
-- `materialProgressColors`: The colors to use for the progress bar on Android.
-- `cupertinoProgressColors`: The colors to use for the progress bar on iOS.
 
 ### YPlayerController
 

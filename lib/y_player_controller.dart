@@ -1,23 +1,19 @@
-import 'package:chewie/chewie.dart';
 import 'package:flutter/material.dart';
-import 'package:video_player/video_player.dart';
+import 'package:media_kit/media_kit.dart';
 import 'package:y_player/y_player.dart';
-import 'package:youtube_explode_dart/youtube_explode_dart.dart';
+import 'package:youtube_explode_dart/youtube_explode_dart.dart' as exp;
 
 /// Controller for managing the YouTube player.
 ///
 /// This class handles the initialization, playback control, and state management
 /// of the YouTube video player. It uses the youtube_explode_dart package to fetch
-/// video information and the chewie package for the video player interface.
+/// video information and the media_kit package for playback.
 class YPlayerController {
   /// YouTube API client for fetching video information.
-  final YoutubeExplode _yt = YoutubeExplode();
+  final exp.YoutubeExplode _yt = exp.YoutubeExplode();
 
-  /// Controller for the underlying video player.
-  VideoPlayerController? _videoPlayerController;
-
-  /// Controller for the Chewie player interface.
-  ChewieController? _chewieController;
+  /// Media player instance from media_kit.
+  late final Player _player;
 
   /// Current status of the player.
   YPlayerStatus _status = YPlayerStatus.initial;
@@ -31,147 +27,161 @@ class YPlayerController {
   /// The URL of the last successfully initialized video.
   String? _lastInitializedUrl;
 
-  YPlayerController({this.onStateChanged, this.onProgressChanged});
+  /// Constructs a YPlayerController with optional callback functions.
+  YPlayerController({this.onStateChanged, this.onProgressChanged}) {
+    _player = Player();
+    _setupPlayerListeners();
+  }
 
-  /// Whether the player has been initialized.
-  bool get isInitialized =>
-      _chewieController != null && _videoPlayerController != null;
+  /// Checks if the player has been initialized with media.
+  bool get isInitialized => _player.state.playlist.medias.isNotEmpty;
 
-  /// The current status of the player.
+  /// Gets the current status of the player.
   YPlayerStatus get status => _status;
 
-  /// The Chewie controller for the video player interface.
-  ChewieController? get chewieController => _chewieController;
+  /// Gets the underlying media_kit Player instance.
+  Player get player => _player;
 
   /// Initializes the player with the given YouTube URL and settings.
   ///
-  /// If the URL is the same as the last initialized URL and the player is already
-  /// initialized, this method does nothing to avoid unnecessary reinitialization.
+  /// This method fetches video information, extracts stream URLs, and sets up
+  /// the player with the highest quality video and audio streams available.
   Future<void> initialize(
     String youtubeUrl, {
     bool autoPlay = true,
     double? aspectRatio,
     bool allowFullScreen = true,
     bool allowMuting = true,
-    ChewieProgressColors? materialProgressColors,
-    ChewieProgressColors? cupertinoProgressColors,
   }) async {
+    // Avoid re-initialization if the URL hasn't changed
     if (_lastInitializedUrl == youtubeUrl && isInitialized) {
+      debugPrint('YPlayerController: Already initialized with this URL');
       return;
     }
 
     _setStatus(YPlayerStatus.loading);
     try {
-      await _disposeControllers();
-
-      // Fetch video information and get the highest quality stream
+      debugPrint('YPlayerController: Fetching video info for $youtubeUrl');
       final video = await _yt.videos.get(youtubeUrl);
       final manifest = await _yt.videos.streamsClient.getManifest(video.id);
-      final streamInfo = manifest.muxed.withHighestBitrate();
 
-      // Initialize video player controller
-      _videoPlayerController = VideoPlayerController.networkUrl(
-        Uri.parse(streamInfo.url.toString()),
-      );
-      await _videoPlayerController!.initialize();
+      // Get the highest quality video and audio streams
+      final videoStreamInfo = manifest.videoOnly.withHighestBitrate();
+      final audioStreamInfo = manifest.audioOnly.withHighestBitrate();
 
-      final videoAspectRatio = _videoPlayerController!.value.aspectRatio;
+      debugPrint('YPlayerController: Video URL: ${videoStreamInfo.url}');
+      debugPrint('YPlayerController: Audio URL: ${audioStreamInfo.url}');
 
-      // Initialize Chewie controller
-      _chewieController = ChewieController(
-        videoPlayerController: _videoPlayerController!,
-        autoPlay: autoPlay,
-        looping: false,
-        aspectRatio: aspectRatio ?? videoAspectRatio,
-        allowFullScreen: allowFullScreen,
-        allowMuting: allowMuting,
-        materialProgressColors:
-            materialProgressColors ?? ChewieProgressColors(),
-        cupertinoProgressColors:
-            cupertinoProgressColors ?? ChewieProgressColors(),
-        showControls: true,
-        errorBuilder: (context, errorMessage) {
-          return Center(
-            child: Text(
-              errorMessage,
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 10,
-              ),
-            ),
-          );
-        },
-      );
+      // Stop any existing playback
+      if (isInitialized) {
+        debugPrint('YPlayerController: Stopping previous playback');
+        await _player.stop();
+      }
 
-      _videoPlayerController!.addListener(_videoListener);
-      _setStatus(YPlayerStatus.playing);
+      // Open the video stream
+      await _player.open(Media(videoStreamInfo.url.toString()), play: false);
+
+      // Add the audio track
+      await _player
+          .setAudioTrack(AudioTrack.uri(audioStreamInfo.url.toString()));
+
+      // Add a small delay to ensure everything is set up
+      await Future.delayed(const Duration(milliseconds: 500));
+
+      // Start playback if autoPlay is true
+      if (autoPlay) {
+        await _player.play();
+      }
+
       _lastInitializedUrl = youtubeUrl;
+      _setStatus(autoPlay ? YPlayerStatus.playing : YPlayerStatus.paused);
+      debugPrint(
+          'YPlayerController: Initialization complete. Status: $_status');
     } catch (e) {
+      debugPrint('YPlayerController: Error during initialization: $e');
       _setStatus(YPlayerStatus.error);
     }
   }
 
-  /// Listener for video player events.
+  /// Sets up listeners for various player events.
   ///
-  /// Updates the player status and triggers the progress callback.
-  void _videoListener() {
-    if (_videoPlayerController == null) return;
+  /// This method initializes listeners for playback state changes,
+  /// completion events, position updates, errors, and more.
+  void _setupPlayerListeners() {
+    _player.stream.playing.listen((playing) {
+      debugPrint('YPlayerController: Playing state changed to $playing');
+      _setStatus(playing ? YPlayerStatus.playing : YPlayerStatus.paused);
+    });
 
-    final playerValue = _videoPlayerController!.value;
-    if (playerValue.isPlaying) {
-      _setStatus(YPlayerStatus.playing);
-    } else if (playerValue.position >= playerValue.duration) {
-      _setStatus(YPlayerStatus.stopped);
-    } else {
-      _setStatus(YPlayerStatus.paused);
-    }
+    _player.stream.completed.listen((completed) {
+      debugPrint('YPlayerController: Playback completed: $completed');
+      if (completed) _setStatus(YPlayerStatus.stopped);
+    });
 
-    onProgressChanged?.call(playerValue.position, playerValue.duration);
+    _player.stream.position.listen((position) {
+      debugPrint('YPlayerController: Position updated: $position');
+      onProgressChanged?.call(position, _player.state.duration);
+    });
+
+    _player.stream.error.listen((error) {
+      debugPrint('YPlayerController: Error occurred: $error');
+      _setStatus(YPlayerStatus.error);
+    });
+
+    _player.stream.audioParams.listen((params) {
+      debugPrint('YPlayerController: Audio params changed: $params');
+    });
+
+    _player.stream.audioDevice.listen((device) {
+      debugPrint('YPlayerController: Audio device changed: $device');
+    });
+
+    _player.stream.track.listen((track) {
+      debugPrint('YPlayerController: Track changed: $track');
+    });
+
+    _player.stream.tracks.listen((tracks) {
+      debugPrint('YPlayerController: Available tracks: $tracks');
+    });
   }
 
   /// Updates the player status and triggers the onStateChanged callback.
   void _setStatus(YPlayerStatus newStatus) {
     if (_status != newStatus) {
       _status = newStatus;
+      debugPrint('YPlayerController: Status changed to $newStatus');
       onStateChanged?.call(_status);
     }
   }
 
   /// Starts or resumes video playback.
-  void play() {
-    _videoPlayerController?.play();
+  Future<void> play() async {
+    debugPrint('YPlayerController: Play requested');
+    await _player.play();
   }
 
   /// Pauses video playback.
-  void pause() {
-    _videoPlayerController?.pause();
+  Future<void> pause() async {
+    debugPrint('YPlayerController: Pause requested');
+    await _player.pause();
   }
 
   /// Stops video playback and resets to the beginning.
-  void stop() {
-    _videoPlayerController?.pause();
-    _videoPlayerController?.seekTo(Duration.zero);
+  Future<void> stop() async {
+    debugPrint('YPlayerController: Stop requested');
+    await _player.stop();
   }
 
   /// Gets the current playback position.
-  Duration get position =>
-      _videoPlayerController?.value.position ?? Duration.zero;
+  Duration get position => _player.state.position;
 
   /// Gets the total duration of the video.
-  Duration get duration =>
-      _videoPlayerController?.value.duration ?? Duration.zero;
-
-  /// Disposes of the current video player and Chewie controllers.
-  Future<void> _disposeControllers() async {
-    await _videoPlayerController?.dispose();
-    _chewieController?.dispose();
-    _videoPlayerController = null;
-    _chewieController = null;
-  }
+  Duration get duration => _player.state.duration;
 
   /// Disposes of all resources used by the controller.
   void dispose() {
-    _disposeControllers();
+    debugPrint('YPlayerController: Disposing');
+    _player.dispose();
     _yt.close();
   }
 }
