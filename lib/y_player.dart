@@ -11,7 +11,8 @@ enum YPlayerStatus { initial, loading, playing, paused, stopped, error }
 typedef YPlayerStateCallback = void Function(YPlayerStatus status);
 
 /// Callback signature for when the player's progress changes.
-typedef YPlayerProgressCallback = void Function(Duration position, Duration duration);
+typedef YPlayerProgressCallback = void Function(
+    Duration position, Duration duration);
 
 /// A customizable YouTube video player widget.
 ///
@@ -183,7 +184,8 @@ class YPlayerState extends State<YPlayer> with SingleTickerProviderStateMixin {
     } else if (_controller.status == YPlayerStatus.loading) {
       // If the video is still loading, show a loading indicator
       return Center(
-        child: widget.loadingWidget ?? const CircularProgressIndicator.adaptive(),
+        child:
+            widget.loadingWidget ?? const CircularProgressIndicator.adaptive(),
       );
     } else if (_controller.status == YPlayerStatus.error) {
       // If there was an error, show the error widget

@@ -47,12 +47,12 @@ class YPlayerController {
   /// This method fetches video information, extracts stream URLs, and sets up
   /// the player with the highest quality video and audio streams available.
   Future<void> initialize(
-      String youtubeUrl, {
-        bool autoPlay = true,
-        double? aspectRatio,
-        bool allowFullScreen = true,
-        bool allowMuting = true,
-      }) async {
+    String youtubeUrl, {
+    bool autoPlay = true,
+    double? aspectRatio,
+    bool allowFullScreen = true,
+    bool allowMuting = true,
+  }) async {
     // Avoid re-initialization if the URL hasn't changed
     if (_lastInitializedUrl == youtubeUrl && isInitialized) {
       debugPrint('YPlayerController: Already initialized with this URL');
@@ -82,7 +82,8 @@ class YPlayerController {
       await _player.open(Media(videoStreamInfo.url.toString()), play: false);
 
       // Add the audio track
-      await _player.setAudioTrack(AudioTrack.uri(audioStreamInfo.url.toString()));
+      await _player
+          .setAudioTrack(AudioTrack.uri(audioStreamInfo.url.toString()));
 
       // Add a small delay to ensure everything is set up
       await Future.delayed(const Duration(milliseconds: 500));
@@ -94,7 +95,8 @@ class YPlayerController {
 
       _lastInitializedUrl = youtubeUrl;
       _setStatus(autoPlay ? YPlayerStatus.playing : YPlayerStatus.paused);
-      debugPrint('YPlayerController: Initialization complete. Status: $_status');
+      debugPrint(
+          'YPlayerController: Initialization complete. Status: $_status');
     } catch (e) {
       debugPrint('YPlayerController: Error during initialization: $e');
       _setStatus(YPlayerStatus.error);
