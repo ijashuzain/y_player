@@ -82,7 +82,8 @@ class YPlayerController {
       await _player.open(Media(videoStreamInfo.url.toString()), play: false);
 
       // Add the audio track
-      await _player.setAudioTrack(AudioTrack.uri(audioStreamInfo.url.toString()));
+      await _player
+          .setAudioTrack(AudioTrack.uri(audioStreamInfo.url.toString()));
 
       // Add a small delay to ensure everything is set up
       await Future.delayed(const Duration(milliseconds: 500));
@@ -94,7 +95,8 @@ class YPlayerController {
 
       _lastInitializedUrl = youtubeUrl;
       _setStatus(autoPlay ? YPlayerStatus.playing : YPlayerStatus.paused);
-      debugPrint('YPlayerController: Initialization complete. Status: $_status');
+      debugPrint(
+          'YPlayerController: Initialization complete. Status: $_status');
     } catch (e) {
       debugPrint('YPlayerController: Error during initialization: $e');
       _setStatus(YPlayerStatus.error);

@@ -22,7 +22,8 @@ Future<void> yPlayerDefaultExitFullscreen() async {
         ],
       );
     } else if (Platform.isMacOS || Platform.isWindows || Platform.isLinux) {
-      await const MethodChannel('com.alexmercerind/media_kit_video').invokeMethod(
+      await const MethodChannel('com.alexmercerind/media_kit_video')
+          .invokeMethod(
         'Utils.ExitNativeFullscreen',
       );
     }
