@@ -1,5 +1,9 @@
 # Changelog
 
+## 2.0.1
+- Fixed bug fullscreen mode not working properly
+- Added additional controls to Fullscreen mode
+
 ## 2.0.0
 - Major refactoring to address YouTube's deprecation of muxed streams
 - Implemented separate handling of video and audio streams for better quality options
