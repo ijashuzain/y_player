@@ -1,0 +1,92 @@
+name: Issue Management
+
+on:
+  issues:
+    types: [opened, labeled, unlabeled]
+  issue_comment:
+    types: [created]
+
+jobs:
+  auto_assign:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Auto-assign issue
+        if: github.event.action == 'opened'
+        uses: actions/github-script@v6
+        with:
+          github-token: ${{secrets.GITHUB_TOKEN}}
+          script: |
+            github.rest.issues.addAssignees({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.name,
+              assignees: ['ijashuzain']
+            })
+
+  manage_waiting_for_response:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check for response and manage label
+        uses: actions/github-script@v6
+        with:
+          github-token: ${{secrets.GITHUB_TOKEN}}
+          script: |
+            const issue = await github.rest.issues.get({
+              owner: context.repo.owner,
+              repo: context.repo.name,
+              issue_number: context.issue.number
+            });
+            
+            const waitingLabel = issue.data.labels.find(l => l.name === 'waiting for response');
+            
+            if (waitingLabel) {
+              const labeledAt = new Date(waitingLabel.created_at);
+              const now = new Date();
+              const hoursSinceLabeled = (now - labeledAt) / (1000 * 60 * 60);
+              
+              if (hoursSinceLabeled >= 24) {
+                // Check for any comments after the label was added
+                const comments = await github.rest.issues.listComments({
+                  owner: context.repo.owner,
+                  repo: context.repo.name,
+                  issue_number: context.issue.number
+                });
+                
+                const hasNewComments = comments.data.some(comment => new Date(comment.created_at) > labeledAt);
+                
+                if (!hasNewComments) {
+                  // Close the issue if no new comments
+                  await github.rest.issues.update({
+                    owner: context.repo.owner,
+                    repo: context.repo.name,
+                    issue_number: context.issue.number,
+                    state: 'closed'
+                  });
+                } else {
+                  // Remove 'waiting for response' label and add 'triage' if there are new comments
+                  await github.rest.issues.removeLabel({
+                    owner: context.repo.owner,
+                    repo: context.repo.name,
+                    issue_number: context.issue.number,
+                    name: 'waiting for response'
+                  });
+                  
+                  await github.rest.issues.addLabels({
+                    owner: context.repo.owner,
+                    repo: context.repo.name,
+                    issue_number: context.issue.number,
+                    labels: ['triage']
+                  });
+                }
+              }
+            }
+            
+            // Handle case when 'waiting for response' label is manually removed
+            if (github.event.action === 'unlabeled' && github.event.label.name === 'waiting for response') {
+              await github.rest.issues.addLabels({
+                owner: context.repo.owner,
+                repo: context.repo.name,
+                issue_number: context.issue.number,
+                labels: ['triage']
+              });
+            }
