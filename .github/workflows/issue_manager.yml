@@ -86,7 +86,8 @@ jobs:
                 }
               }
               
-              if (github.event.action === 'unlabeled' && github.event.label.name === 'waiting for response') {
+              // Check if the event is an 'unlabeled' event and the label is 'waiting for response'
+              if (github.event && github.event.action === 'unlabeled' && github.event.label && github.event.label.name === 'waiting for response') {
                 await github.rest.issues.addLabels({
                   owner,
                   repo,
