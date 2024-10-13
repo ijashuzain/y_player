@@ -16,12 +16,16 @@ jobs:
         with:
           github-token: ${{secrets.GITHUB_TOKEN}}
           script: |
-            github.rest.issues.addAssignees({
-              issue_number: context.issue.number,
-              owner: context.repo.owner,
-              repo: context.repo.name,
-              assignees: ['ijashuzain']
-            })
+            try {
+              await github.rest.issues.addAssignees({
+                owner: context.repo.owner,
+                repo: context.repo.name,
+                issue_number: context.issue.number,
+                assignees: ['ijashuzain']
+              });
+            } catch (error) {
+              console.error('Error assigning issue:', error.message);
+            }
 
   manage_waiting_for_response:
     runs-on: ubuntu-latest
@@ -31,62 +35,65 @@ jobs:
         with:
           github-token: ${{secrets.GITHUB_TOKEN}}
           script: |
-            const issue = await github.rest.issues.get({
-              owner: context.repo.owner,
-              repo: context.repo.name,
-              issue_number: context.issue.number
-            });
-            
-            const waitingLabel = issue.data.labels.find(l => l.name === 'waiting for response');
-            
-            if (waitingLabel) {
-              const labeledAt = new Date(waitingLabel.created_at);
-              const now = new Date();
-              const hoursSinceLabeled = (now - labeledAt) / (1000 * 60 * 60);
+            try {
+              const { owner, repo } = context.repo;
+              const issue_number = context.issue.number;
+
+              const issue = await github.rest.issues.get({
+                owner,
+                repo,
+                issue_number
+              });
               
-              if (hoursSinceLabeled >= 24) {
-                // Check for any comments after the label was added
-                const comments = await github.rest.issues.listComments({
-                  owner: context.repo.owner,
-                  repo: context.repo.name,
-                  issue_number: context.issue.number
-                });
+              const waitingLabel = issue.data.labels.find(l => l.name === 'waiting for response');
+              
+              if (waitingLabel) {
+                const labeledAt = new Date(waitingLabel.created_at);
+                const now = new Date();
+                const hoursSinceLabeled = (now - labeledAt) / (1000 * 60 * 60);
                 
-                const hasNewComments = comments.data.some(comment => new Date(comment.created_at) > labeledAt);
-                
-                if (!hasNewComments) {
-                  // Close the issue if no new comments
-                  await github.rest.issues.update({
-                    owner: context.repo.owner,
-                    repo: context.repo.name,
-                    issue_number: context.issue.number,
-                    state: 'closed'
-                  });
-                } else {
-                  // Remove 'waiting for response' label and add 'triage' if there are new comments
-                  await github.rest.issues.removeLabel({
-                    owner: context.repo.owner,
-                    repo: context.repo.name,
-                    issue_number: context.issue.number,
-                    name: 'waiting for response'
+                if (hoursSinceLabeled >= 24) {
+                  const comments = await github.rest.issues.listComments({
+                    owner,
+                    repo,
+                    issue_number
                   });
                   
-                  await github.rest.issues.addLabels({
-                    owner: context.repo.owner,
-                    repo: context.repo.name,
-                    issue_number: context.issue.number,
-                    labels: ['triage']
-                  });
+                  const hasNewComments = comments.data.some(comment => new Date(comment.created_at) > labeledAt);
+                  
+                  if (!hasNewComments) {
+                    await github.rest.issues.update({
+                      owner,
+                      repo,
+                      issue_number,
+                      state: 'closed'
+                    });
+                  } else {
+                    await github.rest.issues.removeLabel({
+                      owner,
+                      repo,
+                      issue_number,
+                      name: 'waiting for response'
+                    });
+                    
+                    await github.rest.issues.addLabels({
+                      owner,
+                      repo,
+                      issue_number,
+                      labels: ['triage']
+                    });
+                  }
                 }
               }
-            }
-            
-            // Handle case when 'waiting for response' label is manually removed
-            if (github.event.action === 'unlabeled' && github.event.label.name === 'waiting for response') {
-              await github.rest.issues.addLabels({
-                owner: context.repo.owner,
-                repo: context.repo.name,
-                issue_number: context.issue.number,
-                labels: ['triage']
-              });
+              
+              if (github.event.action === 'unlabeled' && github.event.label.name === 'waiting for response') {
+                await github.rest.issues.addLabels({
+                  owner,
+                  repo,
+                  issue_number,
+                  labels: ['triage']
+                });
+              }
+            } catch (error) {
+              console.error('Error managing issue:', error.message);
             }
