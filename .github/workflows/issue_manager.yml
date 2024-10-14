@@ -41,7 +41,6 @@ jobs:
         with:
           github-token: ${{secrets.GITHUB_TOKEN}}
           script: |
-            try {
               const { owner, repo } = context.repo;
               
               // Fetch all open issues
@@ -86,6 +85,4 @@ jobs:
                   }
                 }
               }
-            } catch (error) {
-              console.error('Error managing issues:', error.message);
             }
