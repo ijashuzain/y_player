@@ -1,10 +1,11 @@
 name: Issue Management
-
 on:
   issues:
     types: [opened, labeled, unlabeled]
   issue_comment:
     types: [created]
+  schedule:
+    - cron: '0 * * * *'  # Run every hour
 
 jobs:
   auto_assign:
@@ -35,66 +36,49 @@ jobs:
         with:
           github-token: ${{secrets.GITHUB_TOKEN}}
           script: |
-            try {
+           
               const { owner, repo } = context.repo;
-              const issue_number = context.issue.number;
-
-              const issue = await github.rest.issues.get({
+              
+              // Fetch all open issues
+              const issues = await github.paginate(github.rest.issues.listForRepo, {
                 owner,
                 repo,
-                issue_number
+                state: 'open'
               });
               
-              const waitingLabel = issue.data.labels.find(l => l.name === 'waiting for response');
-              
-              if (waitingLabel) {
-                const labeledAt = new Date(waitingLabel.created_at);
+              for (const issue of issues) {
+                const issue_number = issue.number;
+                const createdAt = new Date(issue.created_at);
                 const now = new Date();
-                const hoursSinceLabeled = (now - labeledAt) / (1000 * 60 * 60);
+                const hoursSinceCreated = (now - createdAt) / (1000 * 60 * 60);
                 
-                if (hoursSinceLabeled >= 24) {
+                // Check if the issue is older than 24 hours
+                if (hoursSinceCreated >= 24) {
                   const comments = await github.rest.issues.listComments({
                     owner,
                     repo,
                     issue_number
                   });
                   
-                  const hasNewComments = comments.data.some(comment => new Date(comment.created_at) > labeledAt);
-                  
-                  if (!hasNewComments) {
+                  // If there are no comments (except from the issue creator), close the issue
+                  if (comments.data.every(comment => comment.user.login === issue.user.login)) {
                     await github.rest.issues.update({
                       owner,
                       repo,
                       issue_number,
-                      state: 'closed'
-                    });
-                  } else {
-                    await github.rest.issues.removeLabel({
-                      owner,
-                      repo,
-                      issue_number,
-                      name: 'waiting for response'
+                      state: 'closed',
+                      state_reason: 'not_planned'
                     });
                     
-                    await github.rest.issues.addLabels({
+                    await github.rest.issues.createComment({
                       owner,
                       repo,
                       issue_number,
-                      labels: ['triage']
+                      body: 'This issue has been automatically closed due to inactivity for 24 hours. If you still need assistance, please open a new issue or request to reopen this one.'
                     });
+                    
+                    console.log(`Closed issue #${issue_number} due to inactivity.`);
                   }
                 }
               }
-              
-              // Check if the event is an 'unlabeled' event and the label is 'waiting for response'
-              if (github.event && github.event.action === 'unlabeled' && github.event.label && github.event.label.name === 'waiting for response') {
-                await github.rest.issues.addLabels({
-                  owner,
-                  repo,
-                  issue_number,
-                  labels: ['triage']
-                });
-              }
-            } catch (error) {
-              console.error('Error managing issue:', error.message);
-            }
+           
