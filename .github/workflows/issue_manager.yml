@@ -7,6 +7,11 @@ on:
   schedule:
     - cron: '0 * * * *'  # Run every hour
 
+# Add this permissions block at the top level of your workflow
+permissions:
+  issues: write
+  contents: read
+
 jobs:
   auto_assign:
     runs-on: ubuntu-latest
@@ -36,7 +41,7 @@ jobs:
         with:
           github-token: ${{secrets.GITHUB_TOKEN}}
           script: |
-           
+            try {
               const { owner, repo } = context.repo;
               
               // Fetch all open issues
@@ -81,4 +86,6 @@ jobs:
                   }
                 }
               }
-           
+            } catch (error) {
+              console.error('Error managing issues:', error.message);
+            }
