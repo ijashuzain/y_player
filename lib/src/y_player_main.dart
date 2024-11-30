@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/widgets.dart';
 import 'package:media_kit_video/media_kit_video.dart';
 import 'package:y_player/y_player.dart';
 
@@ -79,6 +80,8 @@ class YPlayerState extends State<YPlayer> with SingleTickerProviderStateMixin {
 
   /// Flag to indicate whether the controller is fully initialized and ready.
   bool _isControllerReady = false;
+  late ValueChanged<double> onSpeedChanged;
+  double currentSpeed = 1.0;
 
   @override
   void initState() {
@@ -151,25 +154,72 @@ class YPlayerState extends State<YPlayer> with SingleTickerProviderStateMixin {
     );
   }
 
+  Widget buildSpeedOption() {
+    return PopupMenuButton<double>(
+      icon: const Icon(Icons.speed, color: Colors.white),
+      initialValue: currentSpeed,
+      onSelected: (value) {
+        setState(() {
+          currentSpeed = value;
+          _controller.speed(currentSpeed);
+          print("Change speed $currentSpeed");
+        });
+
+        // Notify parent widget of the new speed
+      },
+      itemBuilder: (context) => [
+        const PopupMenuItem(
+          value: 0.5,
+          child: Text("0.5x"),
+        ),
+        const PopupMenuItem(
+          value: 1.0,
+          child: Text("1.0x (Normal)"),
+        ),
+        const PopupMenuItem(
+          value: 1.5,
+          child: Text("1.5x"),
+        ),
+        const PopupMenuItem(
+          value: 2.0,
+          child: Text("2.0x"),
+        ),
+      ],
+    );
+  }
+
   /// Builds the main content of the player based on its current state.
   Widget _buildPlayerContent(double width, double height) {
     if (_isControllerReady && _controller.isInitialized) {
+      _controller.speed(currentSpeed);
       // If the controller is ready and initialized, show the video player
       return MaterialVideoControlsTheme(
         normal: MaterialVideoControlsThemeData(
-          seekBarBufferColor: Colors.grey,
-          seekOnDoubleTap: true,
-          seekBarPositionColor: widget.color ?? const Color(0xFFFF0000),
-          seekBarThumbColor: widget.color ?? const Color(0xFFFF0000),
-        ),
+            seekBarBufferColor: Colors.grey,
+            seekOnDoubleTap: true,
+            seekBarPositionColor: widget.color ?? const Color(0xFFFF0000),
+            seekBarThumbColor: widget.color ?? const Color(0xFFFF0000),
+            brightnessGesture: true,
+            volumeGesture: true,
+            bottomButtonBar: [
+              const MaterialPositionIndicator(),
+              const Spacer(),
+              buildSpeedOption(),
+              const MaterialFullscreenButton()
+            ]),
         fullscreen: MaterialVideoControlsThemeData(
-          volumeGesture: true,
-          brightnessGesture: true,
-          seekOnDoubleTap: true,
-          seekBarBufferColor: Colors.grey,
-          seekBarPositionColor: widget.color ?? const Color(0xFFFF0000),
-          seekBarThumbColor: widget.color ?? const Color(0xFFFF0000),
-        ),
+            volumeGesture: true,
+            brightnessGesture: true,
+            seekOnDoubleTap: true,
+            seekBarBufferColor: Colors.grey,
+            seekBarPositionColor: widget.color ?? const Color(0xFFFF0000),
+            seekBarThumbColor: widget.color ?? const Color(0xFFFF0000),
+            bottomButtonBar: [
+              const MaterialPositionIndicator(),
+              const Spacer(),
+              buildSpeedOption(),
+              const MaterialFullscreenButton()
+            ]),
         child: Video(
           controller: _videoController,
           controls: MaterialVideoControls,

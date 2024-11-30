@@ -160,6 +160,10 @@ class YPlayerController {
     await _player.play();
   }
 
+  Future<void> speed(double speed) async {
+    await _player.setRate(speed);
+  }
+
   /// Pauses video playback.
   Future<void> pause() async {
     debugPrint('YPlayerController: Pause requested');
