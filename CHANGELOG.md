@@ -1,5 +1,8 @@
 # Changelog
 
+## 2.0.2
+- Playback speed controller added
+
 ## 2.0.1
 - Fixed bug fullscreen mode not working properly
 - Added additional controls to Fullscreen mode
