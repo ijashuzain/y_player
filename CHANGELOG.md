@@ -1,5 +1,8 @@
 # Changelog
 
+## 2.0.3
+- Bottom button bar and seekbar margin customization added.
+
 ## 2.0.2
 - Playback speed controller added
 
