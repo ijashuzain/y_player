@@ -44,6 +44,18 @@ class YPlayer extends StatefulWidget {
   /// A callback that is triggered when the player exits full screen mode.
   final Function()? onExitFullScreen;
 
+  /// The margin around the seek bar.
+  final EdgeInsets? seekBarMargin;
+
+  /// The margin around the seek bar in fullscreen mode.
+  final EdgeInsets? fullscreenSeekBarMargin;
+
+  /// The margin around the bottom button bar.
+  final EdgeInsets? bottomButtonBarMargin;
+
+  /// The margin around the bottom button bar in fullscreen mode.
+  final EdgeInsets? fullscreenBottomButtonBarMargin;
+
   /// Constructs a YPlayer widget.
   ///
   /// The [youtubeUrl] parameter is required and should be a valid YouTube video URL.
@@ -61,6 +73,10 @@ class YPlayer extends StatefulWidget {
     this.color,
     this.onEnterFullScreen,
     this.onExitFullScreen,
+    this.seekBarMargin,
+    this.fullscreenSeekBarMargin,
+    this.bottomButtonBarMargin,
+    this.fullscreenBottomButtonBarMargin,
   }) : super(key: key);
 
   @override
@@ -195,31 +211,39 @@ class YPlayerState extends State<YPlayer> with SingleTickerProviderStateMixin {
       // If the controller is ready and initialized, show the video player
       return MaterialVideoControlsTheme(
         normal: MaterialVideoControlsThemeData(
-            seekBarBufferColor: Colors.grey,
-            seekOnDoubleTap: true,
-            seekBarPositionColor: widget.color ?? const Color(0xFFFF0000),
-            seekBarThumbColor: widget.color ?? const Color(0xFFFF0000),
-            brightnessGesture: true,
-            volumeGesture: true,
-            bottomButtonBar: [
-              const MaterialPositionIndicator(),
-              const Spacer(),
-              buildSpeedOption(),
-              const MaterialFullscreenButton()
-            ]),
+          seekBarBufferColor: Colors.grey,
+          seekOnDoubleTap: true,
+          seekBarPositionColor: widget.color ?? const Color(0xFFFF0000),
+          seekBarThumbColor: widget.color ?? const Color(0xFFFF0000),
+          seekBarMargin: widget.seekBarMargin ?? EdgeInsets.zero,
+          bottomButtonBarMargin: widget.bottomButtonBarMargin ??
+              const EdgeInsets.only(left: 16, right: 8),
+          brightnessGesture: true,
+          volumeGesture: true,
+          bottomButtonBar: [
+            const MaterialPositionIndicator(),
+            const Spacer(),
+            buildSpeedOption(),
+            const MaterialFullscreenButton()
+          ],
+        ),
         fullscreen: MaterialVideoControlsThemeData(
-            volumeGesture: true,
-            brightnessGesture: true,
-            seekOnDoubleTap: true,
-            seekBarBufferColor: Colors.grey,
-            seekBarPositionColor: widget.color ?? const Color(0xFFFF0000),
-            seekBarThumbColor: widget.color ?? const Color(0xFFFF0000),
-            bottomButtonBar: [
-              const MaterialPositionIndicator(),
-              const Spacer(),
-              buildSpeedOption(),
-              const MaterialFullscreenButton()
-            ]),
+          volumeGesture: true,
+          brightnessGesture: true,
+          seekOnDoubleTap: true,
+          seekBarMargin: widget.fullscreenSeekBarMargin ?? EdgeInsets.zero,
+          bottomButtonBarMargin: widget.fullscreenBottomButtonBarMargin ??
+              const EdgeInsets.only(left: 16, right: 8),
+          seekBarBufferColor: Colors.grey,
+          seekBarPositionColor: widget.color ?? const Color(0xFFFF0000),
+          seekBarThumbColor: widget.color ?? const Color(0xFFFF0000),
+          bottomButtonBar: [
+            const MaterialPositionIndicator(),
+            const Spacer(),
+            buildSpeedOption(),
+            const MaterialFullscreenButton()
+          ],
+        ),
         child: Video(
           controller: _videoController,
           controls: MaterialVideoControls,
