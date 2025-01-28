@@ -1,5 +1,9 @@
 # Changelog
 
+## 2.0.4
+- Explode version updated.
+- Support for Flutter 3.27.x
+
 ## 2.0.3
 - Bottom button bar and seekbar margin customization added.
 
