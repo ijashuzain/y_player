@@ -603,15 +603,15 @@ packages:
       path: ".."
       relative: true
     source: path
-    version: "2.0.2"
+    version: "2.0.3"
   youtube_explode_dart:
     dependency: transitive
     description:
       name: youtube_explode_dart
-      sha256: "523a01ef948607d3e8fdcdcdcef1ce805c7d26480f609e3b209d1c73520a6c3c"
+      sha256: "51ca5b2c03bf56060143d4f87df90ec3227592d7ae8a8003532533ae019d4291"
       url: "https://pub.dev"
     source: hosted
-    version: "2.3.1"
+    version: "2.3.6"
 sdks:
   dart: ">=3.4.0 <4.0.0"
   flutter: ">=3.19.0"
