@@ -1,4 +1,4 @@
-library y_player;
+library;
 
 export 'src/enums/y_player_status.dart';
 export 'src/types/y_player_progress_callback.dart';
