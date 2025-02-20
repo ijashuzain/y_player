@@ -178,6 +178,7 @@ class YPlayerState extends State<YPlayer> with SingleTickerProviderStateMixin {
       ),
       constraints: const BoxConstraints(maxHeight: 250, maxWidth: 500),
       builder: (context) => SpeedSliderSheet(
+        primaryColor: widget.color ?? const Color(0xFFFF0000),
         initialSpeed: currentSpeed,
         onSpeedChanged: (newSpeed) {
           setState(() {

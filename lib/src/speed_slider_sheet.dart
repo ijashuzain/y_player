@@ -1,13 +1,27 @@
 import 'package:flutter/material.dart';
 
+/// A bottom sheet with a slider to change the video playback speed.
+///
+/// The user can select a playback speed from the default speeds of 0.25, 0.5,
+/// 1.0, 1.5, and 2.0x. The user can also drag the slider to select a custom
+/// playback speed between 0.25 and 2.0x.
+///
+/// The [initialSpeed] parameter sets the initial value of the slider. The
+/// [onSpeedChanged] parameter is a callback that is invoked when the user
+/// changes the playback speed.
+///
+/// The [primaryColor] parameter sets the color of the slider and the text
+/// labels.
 class SpeedSliderSheet extends StatefulWidget {
   final double initialSpeed;
+  final Color primaryColor;
   final void Function(double) onSpeedChanged;
 
   const SpeedSliderSheet({
     super.key,
     this.initialSpeed = 1.0,
     required this.onSpeedChanged,
+    required this.primaryColor,
   });
 
   @override
@@ -29,6 +43,13 @@ class SpeedSliderSheetState extends State<SpeedSliderSheet> {
     _speedValue = widget.initialSpeed;
   }
 
+  void _onChipTapped(double speed) {
+    setState(() {
+      _speedValue = speed;
+    });
+    widget.onSpeedChanged(speed);
+  }
+
   @override
   Widget build(BuildContext context) {
     return Padding(
@@ -47,17 +68,18 @@ class SpeedSliderSheetState extends State<SpeedSliderSheet> {
           const SizedBox(height: 10),
           const Text(
             "Playback Speed",
-            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+            style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
           ),
           const Divider(),
           Text(
             "${_speedValue.toStringAsFixed(1)}x", // Round to 1 decimal place
-            style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
+            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
           ),
           Slider(
             value: _speedValue,
             min: _minSpeed,
             max: _maxSpeed,
+            activeColor: widget.primaryColor,
             onChanged: (value) {
               final newSpeed = (value * 10).round() / 10;
               setState(() {
@@ -66,12 +88,27 @@ class SpeedSliderSheetState extends State<SpeedSliderSheet> {
               widget.onSpeedChanged(newSpeed);
             },
           ),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: _keySpeeds
-                .map((speed) =>
-                    Text("${speed}x", style: const TextStyle(fontSize: 16)))
-                .toList(),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12.0),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: _keySpeeds.map((speed) {
+                return GestureDetector(
+                  onTap: () => _onChipTapped(speed),
+                  child: Chip(
+                    label: Text(
+                      "${speed}x",
+                      style: const TextStyle(fontSize: 12),
+                    ),
+                    shape: const RoundedRectangleBorder(borderRadius: BorderRadius.all(Radius.circular(40))),
+                    backgroundColor: _speedValue == speed ? widget.primaryColor.withValues(alpha: 0.8) : Colors.transparent,
+                    labelStyle: TextStyle(
+                      color: _speedValue == speed ? Colors.white : Colors.black,
+                    ),
+                  ),
+                );
+              }).toList(),
+            ),
           ),
           const SizedBox(height: 10),
         ],
