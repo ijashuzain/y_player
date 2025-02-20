@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/widgets.dart';
 import 'package:media_kit_video/media_kit_video.dart';
+import 'package:y_player/src/speed_slider_sheet.dart';
 import 'package:y_player/y_player.dart';
 
 /// A customizable YouTube video player widget.
@@ -60,7 +60,7 @@ class YPlayer extends StatefulWidget {
   ///
   /// The [youtubeUrl] parameter is required and should be a valid YouTube video URL.
   const YPlayer({
-    Key? key,
+    super.key,
     required this.youtubeUrl,
     this.aspectRatio,
     this.autoPlay = true,
@@ -77,7 +77,7 @@ class YPlayer extends StatefulWidget {
     this.fullscreenSeekBarMargin,
     this.bottomButtonBarMargin,
     this.fullscreenBottomButtonBarMargin,
-  }) : super(key: key);
+  });
 
   @override
   YPlayerState createState() => YPlayerState();
@@ -170,37 +170,29 @@ class YPlayerState extends State<YPlayer> with SingleTickerProviderStateMixin {
     );
   }
 
-  Widget buildSpeedOption() {
-    return PopupMenuButton<double>(
-      icon: const Icon(Icons.speed, color: Colors.white),
-      initialValue: currentSpeed,
-      onSelected: (value) {
-        setState(() {
-          currentSpeed = value;
-          _controller.speed(currentSpeed);
-          print("Change speed $currentSpeed");
-        });
+  void _showSpeedSlider(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      constraints: const BoxConstraints(maxHeight: 250, maxWidth: 500),
+      builder: (context) => SpeedSliderSheet(
+        initialSpeed: currentSpeed,
+        onSpeedChanged: (newSpeed) {
+          setState(() {
+            currentSpeed = newSpeed;
+            _controller.speed(newSpeed);
+          });
+        },
+      ),
+    );
+  }
 
-        // Notify parent widget of the new speed
-      },
-      itemBuilder: (context) => [
-        const PopupMenuItem(
-          value: 0.5,
-          child: Text("0.5x"),
-        ),
-        const PopupMenuItem(
-          value: 1.0,
-          child: Text("1.0x (Normal)"),
-        ),
-        const PopupMenuItem(
-          value: 1.5,
-          child: Text("1.5x"),
-        ),
-        const PopupMenuItem(
-          value: 2.0,
-          child: Text("2.0x"),
-        ),
-      ],
+  Widget buildSpeedOption() {
+    return IconButton(
+      icon: const Icon(Icons.speed, color: Colors.white),
+      onPressed: () => _showSpeedSlider(context),
     );
   }
 
