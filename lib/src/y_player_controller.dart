@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:just_audio/just_audio.dart';
 import 'package:media_kit/media_kit.dart';
 import 'package:y_player/y_player.dart';
 import 'package:youtube_explode_dart/youtube_explode_dart.dart' as exp;
@@ -14,6 +15,8 @@ class YPlayerController {
 
   /// Media player instance from media_kit.
   late final Player _player;
+
+  final _audioPlayer = AudioPlayer();
 
   /// Current status of the player.
   YPlayerStatus _status = YPlayerStatus.initial;
@@ -82,15 +85,16 @@ class YPlayerController {
       await _player.open(Media(videoStreamInfo.url.toString()), play: false);
 
       // Add the audio track
-      await _player
-          .setAudioTrack(AudioTrack.uri(audioStreamInfo.url.toString()));
+      // await _player
+      //     .setAudioTrack(AudioTrack.uri(audioStreamInfo.url.toString()));
+      _audioPlayer.setUrl(audioStreamInfo.url.toString());
 
       // Add a small delay to ensure everything is set up
       await Future.delayed(const Duration(milliseconds: 500));
 
       // Start playback if autoPlay is true
       if (autoPlay) {
-        await _player.play();
+        play();
       }
 
       _lastInitializedUrl = youtubeUrl;
@@ -110,7 +114,9 @@ class YPlayerController {
   void _setupPlayerListeners() {
     _player.stream.playing.listen((playing) {
       debugPrint('YPlayerController: Playing state changed to $playing');
-      _setStatus(playing ? YPlayerStatus.playing : YPlayerStatus.paused);
+      if (_status != YPlayerStatus.backgroundPlayback) {
+        _setStatus(playing ? YPlayerStatus.playing : YPlayerStatus.paused);
+      }
     });
 
     _player.stream.completed.listen((completed) {
@@ -152,28 +158,59 @@ class YPlayerController {
       debugPrint('YPlayerController: Status changed to $newStatus');
       onStateChanged?.call(_status);
     }
+    if (status == YPlayerStatus.playing) {
+      _audioPlayer.play();
+    } else if (status == YPlayerStatus.paused) {
+      _audioPlayer.pause();
+    }
   }
 
   /// Starts or resumes video playback.
   Future<void> play() async {
     debugPrint('YPlayerController: Play requested');
+    await _audioPlayer.play();
     await _player.play();
   }
 
   Future<void> speed(double speed) async {
     await _player.setRate(speed);
+    await _audioPlayer.setSpeed(speed);
   }
 
   /// Pauses video playback.
   Future<void> pause() async {
     debugPrint('YPlayerController: Pause requested');
     await _player.pause();
+    await _audioPlayer.pause();
   }
 
   /// Stops video playback and resets to the beginning.
   Future<void> stop() async {
     debugPrint('YPlayerController: Stop requested');
     await _player.stop();
+    await _audioPlayer.stop();
+  }
+
+  /// Enables background audio playback when screen is closed
+  Future<void> enableBackgroundPlayback() async {
+    debugPrint('YPlayerController: Enabling background playback');
+    _setStatus(YPlayerStatus.backgroundPlayback);
+  }
+
+  /// Resynchronizes video with audio when returning to the screen
+  Future<void> resumeVideoPlayback() async {
+    debugPrint('YPlayerController: Resuming video playback');
+
+    // Get current audio position
+    final currentPosition = _audioPlayer.position;
+
+    // Seek video to match audio position
+    await _player.seek(currentPosition);
+
+    // Resume video playback
+    await _player.play();
+
+    _setStatus(YPlayerStatus.playing);
   }
 
   /// Gets the current playback position.
@@ -186,6 +223,7 @@ class YPlayerController {
   void dispose() {
     debugPrint('YPlayerController: Disposing');
     _player.dispose();
+    _audioPlayer.dispose();
     _yt.close();
   }
 }

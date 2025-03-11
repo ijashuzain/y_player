@@ -26,7 +26,6 @@ class HomePage extends StatefulWidget {
 }
 
 class _HomePageState extends State<HomePage> {
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -36,7 +35,7 @@ class _HomePageState extends State<HomePage> {
       body: const Column(
         children: [
           YPlayer(
-            youtubeUrl: "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+            youtubeUrl: "https://www.youtube.com/watch?v=Rjw1319nwrQ",
             autoPlay: false,
           ),
         ],

@@ -87,7 +87,8 @@ class YPlayer extends StatefulWidget {
 ///
 /// This class manages the lifecycle of the video player and handles
 /// initialization, playback control, and UI updates.
-class YPlayerState extends State<YPlayer> with SingleTickerProviderStateMixin {
+class YPlayerState extends State<YPlayer>
+    with SingleTickerProviderStateMixin, WidgetsBindingObserver {
   /// The controller for managing the YouTube player.
   late YPlayerController _controller;
 
@@ -111,6 +112,30 @@ class YPlayerState extends State<YPlayer> with SingleTickerProviderStateMixin {
     _videoController = VideoController(_controller.player);
     // Start the player initialization process
     _initializePlayer();
+
+    // Register lifecycle observer
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (_isControllerReady) {
+      switch (state) {
+        case AppLifecycleState.paused:
+        case AppLifecycleState.inactive:
+          // App went to background or inactive - enable background audio only
+          _controller.enableBackgroundPlayback();
+          break;
+        case AppLifecycleState.resumed:
+          // App came back to foreground - synchronize video with audio
+          if (_controller.status == YPlayerStatus.backgroundPlayback) {
+            _controller.resumeVideoPlayback();
+          }
+          break;
+        default:
+          break;
+      }
+    }
   }
 
   /// Initializes the video player with the provided YouTube URL and settings.
@@ -146,6 +171,8 @@ class YPlayerState extends State<YPlayer> with SingleTickerProviderStateMixin {
 
   @override
   void dispose() {
+    // Unregister lifecycle observer
+    WidgetsBinding.instance.removeObserver(this);
     // Ensure the controller is properly disposed when the widget is removed
     _controller.dispose();
     super.dispose();
@@ -241,6 +268,7 @@ class YPlayerState extends State<YPlayer> with SingleTickerProviderStateMixin {
           controls: MaterialVideoControls,
           width: width,
           height: height,
+          filterQuality: FilterQuality.high,
           onEnterFullscreen: () async {
             if (widget.onEnterFullScreen != null) {
               return widget.onEnterFullScreen!();
