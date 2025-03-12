@@ -6,5 +6,4 @@ enum YPlayerStatus {
   paused,
   stopped,
   error,
-  backgroundPlayback,
 }

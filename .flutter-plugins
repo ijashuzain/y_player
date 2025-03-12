@@ -1,7 +1,4 @@
 # This is a generated file; do not edit or check into version control.
-audio_session=C:\\Users\\mosta\\AppData\\Local\\Pub\\Cache\\hosted\\pub.dev\\audio_session-0.1.25\\
-just_audio=C:\\Users\\mosta\\AppData\\Local\\Pub\\Cache\\hosted\\pub.dev\\just_audio-0.9.46\\
-just_audio_web=C:\\Users\\mosta\\AppData\\Local\\Pub\\Cache\\hosted\\pub.dev\\just_audio_web-0.4.14\\
 media_kit_libs_android_video=C:\\Users\\mosta\\AppData\\Local\\Pub\\Cache\\hosted\\pub.dev\\media_kit_libs_android_video-1.3.6\\
 media_kit_libs_ios_video=C:\\Users\\mosta\\AppData\\Local\\Pub\\Cache\\hosted\\pub.dev\\media_kit_libs_ios_video-1.1.4\\
 media_kit_libs_linux=C:\\Users\\mosta\\AppData\\Local\\Pub\\Cache\\hosted\\pub.dev\\media_kit_libs_linux-1.1.3\\
@@ -10,11 +7,6 @@ media_kit_libs_windows_video=C:\\Users\\mosta\\AppData\\Local\\Pub\\Cache\\hoste
 media_kit_native_event_loop=C:\\Users\\mosta\\AppData\\Local\\Pub\\Cache\\hosted\\pub.dev\\media_kit_native_event_loop-1.0.9\\
 media_kit_video=C:\\Users\\mosta\\AppData\\Local\\Pub\\Cache\\hosted\\pub.dev\\media_kit_video-1.2.5\\
 package_info_plus=C:\\Users\\mosta\\AppData\\Local\\Pub\\Cache\\hosted\\pub.dev\\package_info_plus-8.3.0\\
-path_provider=C:\\Users\\mosta\\AppData\\Local\\Pub\\Cache\\hosted\\pub.dev\\path_provider-2.1.5\\
-path_provider_android=C:\\Users\\mosta\\AppData\\Local\\Pub\\Cache\\hosted\\pub.dev\\path_provider_android-2.2.16\\
-path_provider_foundation=C:\\Users\\mosta\\AppData\\Local\\Pub\\Cache\\hosted\\pub.dev\\path_provider_foundation-2.4.1\\
-path_provider_linux=C:\\Users\\mosta\\AppData\\Local\\Pub\\Cache\\hosted\\pub.dev\\path_provider_linux-2.2.1\\
-path_provider_windows=C:\\Users\\mosta\\AppData\\Local\\Pub\\Cache\\hosted\\pub.dev\\path_provider_windows-2.3.0\\
 screen_brightness=C:\\Users\\mosta\\AppData\\Local\\Pub\\Cache\\hosted\\pub.dev\\screen_brightness-0.2.2+1\\
 screen_brightness_android=C:\\Users\\mosta\\AppData\\Local\\Pub\\Cache\\hosted\\pub.dev\\screen_brightness_android-0.1.0+2\\
 screen_brightness_ios=C:\\Users\\mosta\\AppData\\Local\\Pub\\Cache\\hosted\\pub.dev\\screen_brightness_ios-0.1.0\\

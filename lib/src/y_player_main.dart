@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:media_kit_video/media_kit_video.dart';
+import 'package:y_player/src/quality_selection_sheet.dart';
 import 'package:y_player/src/speed_slider_sheet.dart';
 import 'package:y_player/y_player.dart';
 
@@ -87,8 +88,7 @@ class YPlayer extends StatefulWidget {
 ///
 /// This class manages the lifecycle of the video player and handles
 /// initialization, playback control, and UI updates.
-class YPlayerState extends State<YPlayer>
-    with SingleTickerProviderStateMixin, WidgetsBindingObserver {
+class YPlayerState extends State<YPlayer> with SingleTickerProviderStateMixin {
   /// The controller for managing the YouTube player.
   late YPlayerController _controller;
 
@@ -112,30 +112,6 @@ class YPlayerState extends State<YPlayer>
     _videoController = VideoController(_controller.player);
     // Start the player initialization process
     _initializePlayer();
-
-    // Register lifecycle observer
-    WidgetsBinding.instance.addObserver(this);
-  }
-
-  @override
-  void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (_isControllerReady) {
-      switch (state) {
-        case AppLifecycleState.paused:
-        case AppLifecycleState.inactive:
-          // App went to background or inactive - enable background audio only
-          _controller.enableBackgroundPlayback();
-          break;
-        case AppLifecycleState.resumed:
-          // App came back to foreground - synchronize video with audio
-          if (_controller.status == YPlayerStatus.backgroundPlayback) {
-            _controller.resumeVideoPlayback();
-          }
-          break;
-        default:
-          break;
-      }
-    }
   }
 
   /// Initializes the video player with the provided YouTube URL and settings.
@@ -171,8 +147,6 @@ class YPlayerState extends State<YPlayer>
 
   @override
   void dispose() {
-    // Unregister lifecycle observer
-    WidgetsBinding.instance.removeObserver(this);
     // Ensure the controller is properly disposed when the widget is removed
     _controller.dispose();
     super.dispose();
@@ -223,6 +197,40 @@ class YPlayerState extends State<YPlayer>
     );
   }
 
+  void _showQualitySelector(BuildContext context) {
+    final qualityOptions = _controller.getAvailableQualities();
+
+    if (qualityOptions.isEmpty) {
+      // No quality options available
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No quality options available')),
+      );
+      return;
+    }
+
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      constraints: const BoxConstraints(maxWidth: 500),
+      builder: (context) => QualitySelectionSheet(
+        selectedQuality: _controller.currentQuality,
+        qualityOptions: qualityOptions,
+        onQualitySelected: (quality) {
+          _controller.setQuality(quality);
+        },
+      ),
+    );
+  }
+
+  Widget buildQualityOption() {
+    return IconButton(
+      icon: const Icon(Icons.eight_k_outlined, color: Colors.white),
+      onPressed: () => _showQualitySelector(context),
+    );
+  }
+
   /// Builds the main content of the player based on its current state.
   Widget _buildPlayerContent(double width, double height) {
     if (_isControllerReady && _controller.isInitialized) {
@@ -242,6 +250,7 @@ class YPlayerState extends State<YPlayer>
           bottomButtonBar: [
             const MaterialPositionIndicator(),
             const Spacer(),
+            buildQualityOption(),
             buildSpeedOption(),
             const MaterialFullscreenButton()
           ],
@@ -259,6 +268,7 @@ class YPlayerState extends State<YPlayer>
           bottomButtonBar: [
             const MaterialPositionIndicator(),
             const Spacer(),
+            buildQualityOption(),
             buildSpeedOption(),
             const MaterialFullscreenButton()
           ],

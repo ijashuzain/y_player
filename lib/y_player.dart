@@ -1,6 +1,7 @@
-library y_player;
+library;
 
 export 'src/enums/y_player_status.dart';
+export 'src/models/quality_option.dart';
 export 'src/types/y_player_progress_callback.dart';
 export 'src/types/y_player_state_callback.dart';
 export 'src/utils/y_player_default_enter_screen.dart';
