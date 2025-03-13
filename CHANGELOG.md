@@ -1,5 +1,8 @@
 # Changelog
 
+## 2.0.4+1
+- Playback speed UI changed.
+
 ## 2.0.4
 - Explode version updated.
 - Support for Flutter 3.27.x
