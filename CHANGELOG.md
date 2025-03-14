@@ -1,5 +1,9 @@
 # Changelog
 
+## 2.0.5
+- Video quality selection #3 added in #15. Thanks to @MostafaAlyy for the contribution
+
+
 ## 2.0.4+1
 - Playback speed UI changed.
 
