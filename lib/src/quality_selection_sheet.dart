@@ -5,6 +5,9 @@ class QualitySelectionSheet extends StatelessWidget {
   /// The currently selected quality
   final int selectedQuality;
 
+  /// The primary color of the app
+  final Color primaryColor;
+
   /// List of available quality options
   final List<QualityOption> qualityOptions;
 
@@ -15,7 +18,7 @@ class QualitySelectionSheet extends StatelessWidget {
     super.key,
     required this.selectedQuality,
     required this.qualityOptions,
-    required this.onQualitySelected,
+    required this.onQualitySelected, required this.primaryColor,
   });
 
   @override
@@ -52,9 +55,10 @@ class QualitySelectionSheet extends StatelessWidget {
                 return ListTile(
                   title: Text(option.label),
                   trailing: isSelected
-                      ? const Icon(Icons.check, color: Colors.blue)
+                      ?  Icon(Icons.check, color: primaryColor)
                       : null,
                   selected: isSelected,
+                  selectedColor: primaryColor,
                   onTap: () {
                     Navigator.of(context).pop();
                     onQualitySelected(option.height);
