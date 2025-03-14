@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:media_kit_video/media_kit_video.dart';
+import 'package:y_player/src/quality_selection_sheet.dart';
 import 'package:y_player/src/speed_slider_sheet.dart';
 import 'package:y_player/y_player.dart';
 
@@ -197,6 +198,40 @@ class YPlayerState extends State<YPlayer> with SingleTickerProviderStateMixin {
     );
   }
 
+  void _showQualitySelector(BuildContext context) {
+    final qualityOptions = _controller.getAvailableQualities();
+
+    if (qualityOptions.isEmpty) {
+      // No quality options available
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No quality options available')),
+      );
+      return;
+    }
+
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      constraints: const BoxConstraints(maxWidth: 500),
+      builder: (context) => QualitySelectionSheet(
+        selectedQuality: _controller.currentQuality,
+        qualityOptions: qualityOptions,
+        onQualitySelected: (quality) {
+          _controller.setQuality(quality);
+        },
+      ),
+    );
+  }
+
+  Widget buildQualityOption() {
+    return IconButton(
+      icon: const Icon(Icons.eight_k_outlined, color: Colors.white),
+      onPressed: () => _showQualitySelector(context),
+    );
+  }
+
   /// Builds the main content of the player based on its current state.
   Widget _buildPlayerContent(double width, double height) {
     if (_isControllerReady && _controller.isInitialized) {
@@ -216,6 +251,7 @@ class YPlayerState extends State<YPlayer> with SingleTickerProviderStateMixin {
           bottomButtonBar: [
             const MaterialPositionIndicator(),
             const Spacer(),
+            buildQualityOption(),
             buildSpeedOption(),
             const MaterialFullscreenButton()
           ],
@@ -233,6 +269,7 @@ class YPlayerState extends State<YPlayer> with SingleTickerProviderStateMixin {
           bottomButtonBar: [
             const MaterialPositionIndicator(),
             const Spacer(),
+            buildQualityOption(),
             buildSpeedOption(),
             const MaterialFullscreenButton()
           ],
@@ -242,6 +279,7 @@ class YPlayerState extends State<YPlayer> with SingleTickerProviderStateMixin {
           controls: MaterialVideoControls,
           width: width,
           height: height,
+          filterQuality: FilterQuality.high,
           onEnterFullscreen: () async {
             if (widget.onEnterFullScreen != null) {
               return widget.onEnterFullScreen!();
