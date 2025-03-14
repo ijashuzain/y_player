@@ -67,7 +67,9 @@ class QualitySelectionSheet extends StatelessWidget {
 
                 return ListTile(
                   title: Text(option.label),
-                  trailing: isSelected ? Icon(Icons.check, color: primaryColor) : null,
+                  trailing: isSelected
+                      ? Icon(Icons.check, color: primaryColor)
+                      : null,
                   selected: isSelected,
                   selectedColor: primaryColor,
                   onTap: () {

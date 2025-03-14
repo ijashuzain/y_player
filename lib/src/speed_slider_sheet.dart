@@ -100,8 +100,11 @@ class SpeedSliderSheetState extends State<SpeedSliderSheet> {
                       "${speed}x",
                       style: const TextStyle(fontSize: 12),
                     ),
-                    shape: const RoundedRectangleBorder(borderRadius: BorderRadius.all(Radius.circular(40))),
-                    backgroundColor: _speedValue == speed ? widget.primaryColor.withValues(alpha: 0.8) : Colors.transparent,
+                    shape: const RoundedRectangleBorder(
+                        borderRadius: BorderRadius.all(Radius.circular(40))),
+                    backgroundColor: _speedValue == speed
+                        ? widget.primaryColor.withValues(alpha: 0.8)
+                        : Colors.transparent,
                     labelStyle: TextStyle(
                       color: _speedValue == speed ? Colors.white : Colors.black,
                     ),
