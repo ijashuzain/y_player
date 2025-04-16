@@ -1,3 +1,5 @@
+import 'dart:async'; // Added for microtask
+
 import 'package:flutter/material.dart';
 import 'package:media_kit_video/media_kit_video.dart';
 import 'package:y_player/src/quality_selection_sheet.dart';
@@ -57,6 +59,9 @@ class YPlayer extends StatefulWidget {
   /// The margin around the bottom button bar in fullscreen mode.
   final EdgeInsets? fullscreenBottomButtonBarMargin;
 
+  /// Whether to choose the best quality automatically.
+  final bool chooseBestQuality;
+
   /// Constructs a YPlayer widget.
   ///
   /// The [youtubeUrl] parameter is required and should be a valid YouTube video URL.
@@ -78,6 +83,7 @@ class YPlayer extends StatefulWidget {
     this.fullscreenSeekBarMargin,
     this.bottomButtonBarMargin,
     this.fullscreenBottomButtonBarMargin,
+    this.chooseBestQuality = true,
   });
 
   @override
@@ -100,18 +106,29 @@ class YPlayerState extends State<YPlayer> with SingleTickerProviderStateMixin {
   late ValueChanged<double> onSpeedChanged;
   double currentSpeed = 1.0;
 
+  // Cache built widgets to avoid unnecessary rebuilds
+  Widget? _cachedLoadingWidget;
+  Widget? _cachedErrorWidget;
+  Widget? _cachedPlaceholder;
+
   @override
   void initState() {
     super.initState();
-    // Initialize the YPlayerController with callbacks
     _controller = YPlayerController(
       onStateChanged: widget.onStateChanged,
       onProgressChanged: widget.onProgressChanged,
     );
-    // Create a VideoController from the player in YPlayerController
     _videoController = VideoController(_controller.player);
-    // Start the player initialization process
-    _initializePlayer();
+
+    // Use microtask to avoid blocking UI thread
+    Future.microtask(_initializePlayer);
+
+    // Cache widgets
+    _cachedLoadingWidget =
+        widget.loadingWidget ?? const CircularProgressIndicator.adaptive();
+    _cachedErrorWidget =
+        widget.errorWidget ?? const Text('Error loading video');
+    _cachedPlaceholder = widget.placeholder ?? const SizedBox.shrink();
   }
 
   /// Initializes the video player with the provided YouTube URL and settings.
@@ -122,6 +139,7 @@ class YPlayerState extends State<YPlayer> with SingleTickerProviderStateMixin {
         widget.youtubeUrl,
         autoPlay: widget.autoPlay,
         aspectRatio: widget.aspectRatio,
+        chooseBestQuality: widget.chooseBestQuality,
       );
       if (mounted) {
         // If the widget is still in the tree, update the state
@@ -161,11 +179,17 @@ class YPlayerState extends State<YPlayer> with SingleTickerProviderStateMixin {
         final playerWidth = constraints.maxWidth;
         final playerHeight = playerWidth / aspectRatio;
 
-        return Container(
-          width: playerWidth,
-          height: playerHeight,
-          color: Colors.transparent,
-          child: _buildPlayerContent(playerWidth, playerHeight),
+        // Use ValueListenableBuilder to only rebuild when controller status changes
+        return ValueListenableBuilder<YPlayerStatus>(
+          valueListenable: _controller.statusNotifier,
+          builder: (context, status, _) {
+            return Container(
+              width: playerWidth,
+              height: playerHeight,
+              color: Colors.transparent,
+              child: _buildPlayerContent(playerWidth, playerHeight, status),
+            );
+          },
         );
       },
     );
@@ -182,19 +206,21 @@ class YPlayerState extends State<YPlayer> with SingleTickerProviderStateMixin {
         primaryColor: widget.color ?? const Color(0xFFFF0000),
         initialSpeed: currentSpeed,
         onSpeedChanged: (newSpeed) {
-          setState(() {
-            currentSpeed = newSpeed;
-            _controller.speed(newSpeed);
-          });
+          if (currentSpeed != newSpeed) {
+            setState(() {
+              currentSpeed = newSpeed;
+              _controller.speed(newSpeed);
+            });
+          }
         },
       ),
     );
   }
 
   Widget buildSpeedOption() {
-    return IconButton(
-      icon: const Icon(Icons.speed, color: Colors.white),
-      onPressed: () => _showSpeedSlider(context),
+    return const IconButton(
+      icon: Icon(Icons.speed, color: Colors.white),
+      onPressed: null, // Will be replaced below
     );
   }
 
@@ -227,15 +253,17 @@ class YPlayerState extends State<YPlayer> with SingleTickerProviderStateMixin {
   }
 
   Widget buildQualityOption() {
-    return IconButton(
-      icon: const Icon(Icons.hd_outlined, color: Colors.white),
-      onPressed: () => _showQualitySelector(context),
+    return const IconButton(
+      icon: Icon(Icons.hd_outlined, color: Colors.white),
+      onPressed: null, // Will be replaced below
     );
   }
 
   /// Builds the main content of the player based on its current state.
-  Widget _buildPlayerContent(double width, double height) {
+  Widget _buildPlayerContent(
+      double width, double height, YPlayerStatus status) {
     if (_isControllerReady && _controller.isInitialized) {
+      // Always set speed since controller does not expose currentSpeed
       _controller.speed(currentSpeed);
       // If the controller is ready and initialized, show the video player
       return MaterialVideoControlsTheme(
@@ -252,8 +280,14 @@ class YPlayerState extends State<YPlayer> with SingleTickerProviderStateMixin {
           bottomButtonBar: [
             const MaterialPositionIndicator(),
             const Spacer(),
-            buildQualityOption(),
-            buildSpeedOption(),
+            IconButton(
+              icon: const Icon(Icons.hd_outlined, color: Colors.white),
+              onPressed: () => _showQualitySelector(context),
+            ),
+            IconButton(
+              icon: const Icon(Icons.speed, color: Colors.white),
+              onPressed: () => _showSpeedSlider(context),
+            ),
             const MaterialFullscreenButton()
           ],
         ),
@@ -270,8 +304,14 @@ class YPlayerState extends State<YPlayer> with SingleTickerProviderStateMixin {
           bottomButtonBar: [
             const MaterialPositionIndicator(),
             const Spacer(),
-            buildQualityOption(),
-            buildSpeedOption(),
+            IconButton(
+              icon: const Icon(Icons.hd_outlined, color: Colors.white),
+              onPressed: () => _showQualitySelector(context),
+            ),
+            IconButton(
+              icon: const Icon(Icons.speed, color: Colors.white),
+              onPressed: () => _showSpeedSlider(context),
+            ),
             const MaterialFullscreenButton()
           ],
         ),
@@ -297,20 +337,15 @@ class YPlayerState extends State<YPlayer> with SingleTickerProviderStateMixin {
           },
         ),
       );
-    } else if (_controller.status == YPlayerStatus.loading) {
+    } else if (status == YPlayerStatus.loading) {
       // If the video is still loading, show a loading indicator
-      return Center(
-        child:
-            widget.loadingWidget ?? const CircularProgressIndicator.adaptive(),
-      );
-    } else if (_controller.status == YPlayerStatus.error) {
+      return Center(child: _cachedLoadingWidget);
+    } else if (status == YPlayerStatus.error) {
       // If there was an error, show the error widget
-      return Center(
-        child: widget.errorWidget ?? const Text('Error loading video'),
-      );
+      return Center(child: _cachedErrorWidget);
     } else {
       // For any other state, show the placeholder or an empty container
-      return widget.placeholder ?? Container();
+      return _cachedPlaceholder!;
     }
   }
 }

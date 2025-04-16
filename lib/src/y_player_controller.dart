@@ -1,4 +1,7 @@
-import 'package:flutter/material.dart';
+import 'dart:io'; // Add for HTTP requests
+import 'dart:math'; // For min/max
+
+import 'package:flutter/foundation.dart'; // For kReleaseMode
 import 'package:media_kit/media_kit.dart';
 import 'package:y_player/y_player.dart';
 import 'package:youtube_explode_dart/youtube_explode_dart.dart' as exp;
@@ -36,8 +39,26 @@ class YPlayerController {
   /// Current selected quality (resolution height)
   int _currentQuality = 0; // 0 means auto (highest)
 
+  /// Add this ValueNotifier to track status changes
+  final ValueNotifier<YPlayerStatus> statusNotifier;
+
+  /// LRU cache for manifests (max 20 entries)
+  static final Map<String, exp.StreamManifest> _manifestCache = {};
+  static final List<String> _manifestCacheOrder = [];
+
+  void _cacheManifest(String videoId, exp.StreamManifest manifest) {
+    _manifestCache[videoId] = manifest;
+    _manifestCacheOrder.remove(videoId);
+    _manifestCacheOrder.add(videoId);
+    if (_manifestCacheOrder.length > 20) {
+      final oldest = _manifestCacheOrder.removeAt(0);
+      _manifestCache.remove(oldest);
+    }
+  }
+
   /// Constructs a YPlayerController with optional callback functions.
-  YPlayerController({this.onStateChanged, this.onProgressChanged}) {
+  YPlayerController({this.onStateChanged, this.onProgressChanged})
+      : statusNotifier = ValueNotifier<YPlayerStatus>(YPlayerStatus.loading) {
     _player = Player();
     _setupPlayerListeners();
   }
@@ -62,7 +83,7 @@ class YPlayerController {
 
     // Always include automatic option
     final List<QualityOption> qualities = [
-      QualityOption(height: 0, label: "Auto (Best quality)")
+      QualityOption(height: 0, label: "Auto")
     ];
 
     // Add available video qualities
@@ -88,62 +109,112 @@ class YPlayerController {
   /// Change video quality
   Future<void> setQuality(int height) async {
     if (_currentManifest == null || _currentVideoId == null) {
-      debugPrint(
-          'YPlayerController: Cannot change quality - no manifest available');
+      if (!kReleaseMode) {
+        debugPrint(
+            'YPlayerController: Cannot change quality - no manifest available');
+      }
       return;
     }
+    if (_status == YPlayerStatus.loading) return;
+    if (_currentQuality == height) return; // No-op if already at this quality
 
     _currentQuality = height;
-
-    // Remember current position to restore after quality change
     final currentPosition = _player.state.position;
     final wasPlaying = _player.state.playing;
 
     _setStatus(YPlayerStatus.loading);
     try {
       exp.VideoStreamInfo videoStreamInfo;
-
       if (height == 0) {
-        // Auto - highest quality
         videoStreamInfo = _currentManifest!.videoOnly.withHighestBitrate();
       } else {
-        // Find closest match to requested height
         videoStreamInfo = _currentManifest!.videoOnly
             .where((s) => s.videoResolution.height == height)
             .withHighestBitrate();
       }
-
       final audioStreamInfo = _currentManifest!.audioOnly.withHighestBitrate();
 
-      debugPrint(
-          'YPlayerController: Changing quality to ${videoStreamInfo.videoResolution.height}p');
+      // Only switch if the URL is different
+      final currentUrl = _player.state.playlist.medias.isNotEmpty
+          ? _player.state.playlist.medias.first.uri.toString()
+          : '';
+      if (currentUrl == videoStreamInfo.url.toString()) {
+        _setStatus(wasPlaying ? YPlayerStatus.playing : YPlayerStatus.paused);
+        return;
+      }
 
-      // Stop any existing playback
+      if (!kReleaseMode) {
+        debugPrint(
+            'YPlayerController: Changing quality to ${videoStreamInfo.videoResolution.height}p');
+      }
       await _player.stop();
-
-      // Open the video stream
       await _player.open(
           Media(videoStreamInfo.url.toString(), start: currentPosition),
           play: false);
-
-      // Wait a short delay before adding the audio track
-      await Future.delayed(const Duration(milliseconds: 150));
-
-      // Add the audio track
+      await Future.delayed(const Duration(milliseconds: 100));
       await _player
           .setAudioTrack(AudioTrack.uri(audioStreamInfo.url.toString()));
-
-      // Resume if was playing before
       if (wasPlaying) {
         play();
       }
-
       _setStatus(wasPlaying ? YPlayerStatus.playing : YPlayerStatus.paused);
-      debugPrint('YPlayerController: Quality change complete');
+      if (!kReleaseMode) {
+        debugPrint('YPlayerController: Quality change complete');
+      }
     } catch (e) {
-      debugPrint('YPlayerController: Error changing quality: $e');
+      if (!kReleaseMode) {
+        debugPrint('YPlayerController: Error changing quality: $e');
+      }
       _setStatus(YPlayerStatus.error);
     }
+  }
+
+  /// Estimate network speed (in bits per second) by downloading a small chunk of the video.
+  Future<int?> _estimateNetworkSpeed(String testUrl) async {
+    try {
+      final client = HttpClient();
+      final request = await client.getUrl(Uri.parse(testUrl));
+      // Only download the first 512KB
+      request.headers.add('Range', 'bytes=0-524287');
+      final stopwatch = Stopwatch()..start();
+      final response = await request.close();
+      int totalBytes = 0;
+      await for (var chunk in response) {
+        totalBytes += chunk.length;
+      }
+      stopwatch.stop();
+      client.close();
+      if (stopwatch.elapsedMilliseconds == 0) return null;
+      // bits per second
+      return (totalBytes * 8 * 1000 ~/ stopwatch.elapsedMilliseconds);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Select the best quality for the estimated network speed.
+  Future<int> chooseBestQualityForInternet(exp.StreamManifest manifest) async {
+    // Use the highest quality as default
+    final videoStreams = manifest.videoOnly.toList();
+    if (videoStreams.isEmpty) return 0;
+
+    // Pick a mid-quality stream for speed test
+    final testStream = videoStreams[videoStreams.length ~/ 2];
+    final testUrl = testStream.url.toString();
+    final estimatedBps = await _estimateNetworkSpeed(testUrl);
+
+    if (estimatedBps == null) return 0; // fallback to auto
+
+    // Find the highest quality whose bitrate is <= 80% of estimated bandwidth
+    final safeBps = (estimatedBps * 0.8).toInt();
+    videoStreams.sort((a, b) => a.bitrate.compareTo(b.bitrate));
+    int chosenHeight = 0;
+    for (final stream in videoStreams) {
+      if (stream.bitrate.bitsPerSecond <= safeBps) {
+        chosenHeight = max(chosenHeight, stream.videoResolution.height);
+      }
+    }
+    return chosenHeight == 0 ? 0 : chosenHeight;
   }
 
   /// Initializes the player with the given YouTube URL and settings.
@@ -156,22 +227,52 @@ class YPlayerController {
     double? aspectRatio,
     bool allowFullScreen = true,
     bool allowMuting = true,
+    bool chooseBestQuality = true, // <--- Add this flag
   }) async {
     // Avoid re-initialization if the URL hasn't changed
     if (_lastInitializedUrl == youtubeUrl && isInitialized) {
-      debugPrint('YPlayerController: Already initialized with this URL');
+      if (!kReleaseMode) {
+        debugPrint('YPlayerController: Already initialized with this URL');
+      }
       return;
     }
 
     _setStatus(YPlayerStatus.loading);
     try {
+      // Use cached manifest if available
+      exp.StreamManifest manifest;
+      String videoId;
+
       debugPrint('YPlayerController: Fetching video info for $youtubeUrl');
       final video = await _yt.videos.get(youtubeUrl);
-      final manifest = await _yt.videos.streamsClient.getManifest(video.id);
+      videoId = video.id.value;
+
+      if (_manifestCache.containsKey(videoId)) {
+        manifest = _manifestCache[videoId]!;
+        // Move to most recently used
+        _manifestCacheOrder.remove(videoId);
+        _manifestCacheOrder.add(videoId);
+      } else {
+        manifest = await _yt.videos.streamsClient.getManifest(video.id);
+        _cacheManifest(videoId, manifest);
+      }
 
       // Store manifest and video ID for quality changes later
       _currentManifest = manifest;
-      _currentVideoId = video.id.value;
+      _currentVideoId = videoId;
+
+      // --- Choose best quality for internet if requested ---
+      if (chooseBestQuality) {
+        // Run asynchronously so UI is not blocked
+        Future(() async {
+          final best = await chooseBestQualityForInternet(manifest);
+          if (best != _currentQuality) {
+            _currentQuality = best;
+            await setQuality(best);
+          }
+        });
+      }
+      // -----------------------------------------------------
 
       // Get the appropriate video stream based on quality setting
       exp.VideoStreamInfo videoStreamInfo;
@@ -193,10 +294,12 @@ class YPlayerController {
 
       final audioStreamInfo = manifest.audioOnly.withHighestBitrate();
 
-      debugPrint('YPlayerController: Video URL: ${videoStreamInfo.url}');
-      debugPrint('YPlayerController: Audio URL: ${audioStreamInfo.url}');
-      debugPrint(
-          'YPlayerController: Selected quality: ${videoStreamInfo.videoResolution.height}p');
+      if (!kReleaseMode) {
+        debugPrint('YPlayerController: Video URL: ${videoStreamInfo.url}');
+        debugPrint('YPlayerController: Audio URL: ${audioStreamInfo.url}');
+        debugPrint(
+            'YPlayerController: Selected quality: ${videoStreamInfo.videoResolution.height}p');
+      }
 
       // Stop any existing playback
       if (isInitialized) {
@@ -221,10 +324,14 @@ class YPlayerController {
 
       _lastInitializedUrl = youtubeUrl;
       _setStatus(autoPlay ? YPlayerStatus.playing : YPlayerStatus.paused);
-      debugPrint(
-          'YPlayerController: Initialization complete. Status: $_status');
+      if (!kReleaseMode) {
+        debugPrint(
+            'YPlayerController: Initialization complete. Status: $_status');
+      }
     } catch (e) {
-      debugPrint('YPlayerController: Error during initialization: $e');
+      if (!kReleaseMode) {
+        debugPrint('YPlayerController: Error during initialization: $e');
+      }
       _setStatus(YPlayerStatus.error);
     }
   }
@@ -275,30 +382,35 @@ class YPlayerController {
   void _setStatus(YPlayerStatus newStatus) {
     if (_status != newStatus) {
       _status = newStatus;
-      debugPrint('YPlayerController: Status changed to $newStatus');
+      // Remove or comment out debugPrints in production for performance
+      // debugPrint('YPlayerController: Status changed to $newStatus');
       onStateChanged?.call(_status);
+      statusNotifier.value = newStatus;
     }
   }
 
   /// Starts or resumes video playback.
   Future<void> play() async {
-    debugPrint('YPlayerController: Play requested');
+    // Remove or comment out debugPrints in production for performance
+    // debugPrint('YPlayerController: Play requested');
     await _player.play();
   }
 
   Future<void> speed(double speed) async {
+    // Debounce rapid speed changes by checking if already set
+    if (_player.state.rate == speed) return;
     await _player.setRate(speed);
   }
 
   /// Pauses video playback.
   Future<void> pause() async {
-    debugPrint('YPlayerController: Pause requested');
+    // debugPrint('YPlayerController: Pause requested');
     await _player.pause();
   }
 
   /// Stops video playback and resets to the beginning.
   Future<void> stop() async {
-    debugPrint('YPlayerController: Stop requested');
+    // debugPrint('YPlayerController: Stop requested');
     await _player.stop();
   }
 
