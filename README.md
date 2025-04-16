@@ -11,6 +11,8 @@ YPlayer is a Flutter package that provides an easy-to-use YouTube video player w
 - Play YouTube videos directly in your Flutter app
 - Support for fullscreen mode
 - Optional autoplay
+- Video Quality selection
+- Playback speed control
 - Customizable loading and error widgets
 - Easy to use API with play, pause, and stop functionality
 - Callback support for player state changes and progress updates

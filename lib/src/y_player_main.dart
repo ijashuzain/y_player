@@ -217,6 +217,7 @@ class YPlayerState extends State<YPlayer> with SingleTickerProviderStateMixin {
       constraints: const BoxConstraints(maxWidth: 500),
       builder: (context) => QualitySelectionSheet(
         selectedQuality: _controller.currentQuality,
+        primaryColor: widget.color ?? const Color(0xFFFF0000),
         qualityOptions: qualityOptions,
         onQualitySelected: (quality) {
           _controller.setQuality(quality);
@@ -227,7 +228,7 @@ class YPlayerState extends State<YPlayer> with SingleTickerProviderStateMixin {
 
   Widget buildQualityOption() {
     return IconButton(
-      icon: const Icon(Icons.eight_k_outlined, color: Colors.white),
+      icon: const Icon(Icons.hd_outlined, color: Colors.white),
       onPressed: () => _showQualitySelector(context),
     );
   }
