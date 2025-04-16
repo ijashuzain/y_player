@@ -1,5 +1,8 @@
 # Changelog
 
+## 2.0.5+1
+- Dependancy updations
+
 ## 2.0.5
 - Video quality selection feature added. Thanks to [@MostafaAlyy](https://github.com/MostafaAlyy)  for the contribution
 
