@@ -62,6 +62,9 @@ class YPlayer extends StatefulWidget {
   /// Whether to choose the best quality automatically.
   final bool chooseBestQuality;
 
+  /// Whether to force the original audio track (usually the first one).
+  final bool forceOriginalAudio;
+
   /// Constructs a YPlayer widget.
   ///
   /// The [youtubeUrl] parameter is required and should be a valid YouTube video URL.
@@ -84,6 +87,7 @@ class YPlayer extends StatefulWidget {
     this.bottomButtonBarMargin,
     this.fullscreenBottomButtonBarMargin,
     this.chooseBestQuality = true,
+    this.forceOriginalAudio = false,
   });
 
   @override
@@ -140,6 +144,7 @@ class YPlayerState extends State<YPlayer> with SingleTickerProviderStateMixin {
         autoPlay: widget.autoPlay,
         aspectRatio: widget.aspectRatio,
         chooseBestQuality: widget.chooseBestQuality,
+        forceOriginalAudio: widget.forceOriginalAudio,
       );
       if (mounted) {
         // If the widget is still in the tree, update the state

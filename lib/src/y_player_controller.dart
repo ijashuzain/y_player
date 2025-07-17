@@ -39,6 +39,9 @@ class YPlayerController {
   /// Current selected quality (resolution height)
   int _currentQuality = 0; // 0 means auto (highest)
 
+  /// Whether to force the original audio track
+  bool _forceOriginalAudio = false;
+
   /// Add this ValueNotifier to track status changes
   final ValueNotifier<YPlayerStatus> statusNotifier;
 
@@ -227,7 +230,8 @@ class YPlayerController {
     double? aspectRatio,
     bool allowFullScreen = true,
     bool allowMuting = true,
-    bool chooseBestQuality = true, // <--- Add this flag
+    bool chooseBestQuality = true,
+    bool forceOriginalAudio = false,
   }) async {
     // Avoid re-initialization if the URL hasn't changed
     if (_lastInitializedUrl == youtubeUrl && isInitialized) {
@@ -253,13 +257,20 @@ class YPlayerController {
         _manifestCacheOrder.remove(videoId);
         _manifestCacheOrder.add(videoId);
       } else {
-        manifest = await _yt.videos.streamsClient.getManifest(video.id);
+        // Use iOS client to get better audio track metadata
+        manifest = await _yt.videos.streamsClient.getManifest(
+          video.id,
+          ytClients: [exp.YoutubeApiClient.ios, exp.YoutubeApiClient.tv],
+        );
         _cacheManifest(videoId, manifest);
       }
 
       // Store manifest and video ID for quality changes later
       _currentManifest = manifest;
       _currentVideoId = videoId;
+
+      // Store the force original audio preference
+      _forceOriginalAudio = forceOriginalAudio;
 
       // --- Choose best quality for internet if requested ---
       if (chooseBestQuality) {
@@ -292,7 +303,10 @@ class YPlayerController {
         }
       }
 
-      final audioStreamInfo = manifest.audioOnly.withHighestBitrate();
+      // Select audio stream - use first (original) if forced, otherwise highest bitrate
+      final audioStreamInfo = _forceOriginalAudio && manifest.audioOnly.isNotEmpty
+          ? manifest.audioOnly.first
+          : manifest.audioOnly.withHighestBitrate();
 
       if (!kReleaseMode) {
         debugPrint('YPlayerController: Video URL: ${videoStreamInfo.url}');
@@ -421,6 +435,11 @@ class YPlayerController {
 
   /// Gets the total duration of the video.
   Duration get duration => _player.state.duration;
+
+
+
+  /// Gets whether original audio is being forced
+  bool get forceOriginalAudio => _forceOriginalAudio;
 
   /// Disposes of all resources used by the controller.
   void dispose() {
