@@ -303,10 +303,51 @@ class YPlayerController {
         }
       }
 
-      // Select audio stream - use first (original) if forced, otherwise highest bitrate
-      final audioStreamInfo = _forceOriginalAudio && manifest.audioOnly.isNotEmpty
-          ? manifest.audioOnly.first
-          : manifest.audioOnly.withHighestBitrate();
+      // Select audio stream based on forceOriginalAudio setting
+      exp.AudioStreamInfo audioStreamInfo;
+      
+      if (_forceOriginalAudio) {
+        // Try to find the original audio track
+        try {
+          // First, try to find track with "original" in display name
+          audioStreamInfo = manifest.audioOnly.firstWhere((stream) {
+            if (stream.audioTrack != null) {
+              try {
+                dynamic track = stream.audioTrack;
+                String displayName = track.displayName?.toString() ?? '';
+                return displayName.toLowerCase().contains('original');
+              } catch (e) {
+                // Fallback to toString() method
+                final trackString = stream.audioTrack.toString().toLowerCase();
+                return trackString.contains('original');
+              }
+            }
+            return false;
+          });
+        } catch (e) {
+          try {
+            // If no "original" track found, try to find non-default track
+            // (original tracks are often not the default)
+            audioStreamInfo = manifest.audioOnly.firstWhere((stream) {
+              if (stream.audioTrack != null) {
+                try {
+                  dynamic track = stream.audioTrack;
+                  return track.audioIsDefault == false;
+                } catch (e) {
+                  return false;
+                }
+              }
+              return false;
+            });
+          } catch (e) {
+            // If all else fails, use the first track
+            audioStreamInfo = manifest.audioOnly.first;
+          }
+        }
+      } else {
+        // Default behavior - use highest bitrate
+        audioStreamInfo = manifest.audioOnly.withHighestBitrate();
+      }
 
       if (!kReleaseMode) {
         debugPrint('YPlayerController: Video URL: ${videoStreamInfo.url}');
