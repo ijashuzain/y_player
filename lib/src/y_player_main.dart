@@ -62,9 +62,6 @@ class YPlayer extends StatefulWidget {
   /// Whether to choose the best quality automatically.
   final bool chooseBestQuality;
 
-  final double? videoRotation;
-  final double? videoScale;
-
   /// Constructs a YPlayer widget.
   ///
   /// The [youtubeUrl] parameter is required and should be a valid YouTube video URL.
@@ -87,8 +84,6 @@ class YPlayer extends StatefulWidget {
     this.bottomButtonBarMargin,
     this.fullscreenBottomButtonBarMargin,
     this.chooseBestQuality = true,
-    this.videoRotation,
-    this.videoScale,
   });
 
   @override
@@ -192,7 +187,7 @@ class YPlayerState extends State<YPlayer> with SingleTickerProviderStateMixin {
               width: playerWidth,
               height: playerHeight,
               color: Colors.transparent,
-              child: _buildPlayerContent(playerWidth, playerHeight, status, widget.videoRotation, widget.videoScale),
+              child: _buildPlayerContent(playerWidth, playerHeight, status),
             );
           },
         );
@@ -266,7 +261,7 @@ class YPlayerState extends State<YPlayer> with SingleTickerProviderStateMixin {
 
   /// Builds the main content of the player based on its current state.
   Widget _buildPlayerContent(
-      double width, double height, YPlayerStatus status, double? videoRotation, double? videoScale) {
+      double width, double height, YPlayerStatus status) {
     if (_isControllerReady && _controller.isInitialized) {
       // Always set speed since controller does not expose currentSpeed
       _controller.speed(currentSpeed);
@@ -325,8 +320,6 @@ class YPlayerState extends State<YPlayer> with SingleTickerProviderStateMixin {
           controls: MaterialVideoControls,
           width: width,
           height: height,
-          videoRotation: videoRotation,
-          videoScale: videoScale,
           filterQuality: FilterQuality.high,
           onEnterFullscreen: () async {
             if (widget.onEnterFullScreen != null) {

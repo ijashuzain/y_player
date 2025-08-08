@@ -13,12 +13,7 @@ dependencies:
     sdk: flutter
   media_kit: ^1.2.0
   media_kit_libs_video: ^1.0.6
-  media_kit_video:
-    git:
-      url: https://gitlab.com/zayatrabi/media-kit-main.git
-      path: media_kit_video
-      ref: main 
-  # media_kit_video: ^1.3.0
+  media_kit_video: ^1.3.0
   youtube_explode_dart: ^2.4.0
 
 dev_dependencies:
