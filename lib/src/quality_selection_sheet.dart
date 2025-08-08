@@ -39,7 +39,6 @@ class QualitySelectionSheet extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.all(16.0),
       child: Column(
-        mainAxisSize: MainAxisSize.min,
         children: [
           Container(
             width: 40,
@@ -56,10 +55,8 @@ class QualitySelectionSheet extends StatelessWidget {
           ),
           const Divider(),
           const SizedBox(height: 10),
-          ConstrainedBox(
-            constraints: const BoxConstraints(maxHeight: 300),
+          Expanded(
             child: ListView.builder(
-              shrinkWrap: true,
               itemCount: qualityOptions.length,
               itemBuilder: (context, index) {
                 final option = qualityOptions[index];
