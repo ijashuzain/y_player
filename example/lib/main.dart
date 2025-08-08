@@ -35,8 +35,9 @@ class _HomePageState extends State<HomePage> {
       body: const Column(
         children: [
           YPlayer(
-            youtubeUrl: "https://www.youtube.com/watch?v=_qmk4dtMPgg",
+            youtubeUrl: "https://youtu.be/BSJa1UytM8w?feature=shared",
             autoPlay: false,
+            forceOriginalAudio: true,
           ),
         ],
       ),

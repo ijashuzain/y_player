@@ -1,7 +1,17 @@
 # Changelog
 
+## 2.0.6
+- Dependencies updated
+- Minor bug fixes
+- Added `forceOriginalAudio` parameter to default play of original audio instead of auto-dubbed audio. Thanks for the [@ioridev](https://github.com/ioridev) for the contribution.
+- **New contributors**
+  - [@ioridev](https://github.com/ioridev)
+  - [@Rabi3-za](https://github.com/Rabi3-za)
+  - [@SasthaSankar-CJ](https://github.com/SasthaSankar-CJ)
+
+
 ## 2.0.5+1
-- Dependancy updations
+- Dependencies updated
 
 ## 2.0.5
 - Video quality selection feature added. Thanks to [@MostafaAlyy](https://github.com/MostafaAlyy)  for the contribution
