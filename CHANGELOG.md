@@ -1,5 +1,68 @@
 # Changelog
 
+## 2.1.0
+
+### Fixed
+- **Playback failing on every video.** Released 2.0.6 requested stream manifests
+  with the `ios` then `tv` clients, a combination YouTube now rejects outright
+  with `VideoUnplayableException` / "does not contain any playable streams".
+  Extraction now asks `androidVr`, `androidSdkless` and `ios` in a single
+  `getManifest` call — which merges and 403-checks the streams from all of them
+  — and falls back to `tv`, `mediaConnect` and `safari` for age or region
+  restricted videos ([#25], [#26], [#19], [#24]).
+- Separate audio streams were attached through `Media.extras`, which is user
+  metadata that never reaches libmpv, so the DASH path could play video with no
+  sound. Audio is now attached with `Player.setAudioTrack`.
+- The quality and speed sheets did not open in fullscreen and silently piled up
+  behind it, so they all appeared at once on returning to portrait. The buttons
+  now resolve their own `BuildContext` instead of closing over the inline one.
+- `chooseBestQuality` never actually applied: it assigned `_currentQuality`
+  before calling `setQuality`, whose first guard is `_currentQuality == height`,
+  making the call a silent no-op.
+- The manifest LRU cache was written but never read, so every initialization
+  refetched while the cache grew to its 20 entry ceiling.
+- `getAvailableQualities()` sorted a copy returned by `sublist` and threw the
+  result away, leaving qualities unsorted.
+- The controller never cancelled its player stream subscriptions and never
+  disposed `statusNotifier`. Subscriptions are now cancelled before the player
+  is disposed, and `dispose()` is idempotent.
+
+### Added
+- `seek(Duration)`, `seekForward()`, `seekBackward()` and `setVolume()` on
+  `YPlayerController`; `seek` clamps to the video duration ([#16]).
+- `YPlayer.showThumbnail` (default `true`) displays the video's YouTube
+  thumbnail while it loads, with an automatic `maxresdefault` → `hqdefault`
+  fallback. Also exposed as `YPlayerController.thumbnailUrl` and the static
+  `YPlayerController.thumbnailUrlFor()` ([#18]).
+- `YPlayer.fit` to control how the video is inscribed into the player box
+  (defaults to `BoxFit.contain`, the previous behaviour) ([#22]).
+- `YPlayerController.errorMessage` exposes why initialization failed instead of
+  leaving callers with a bare `YPlayerStatus.error`.
+- `tool/verify_extraction.dart`, a manual script that checks the client
+  fallback chain against live YouTube.
+
+### Changed
+- On desktop the player now prefers H.264 renditions at a given resolution.
+  YouTube serves 1080p+ mostly as VP9/AV1, which many GPUs cannot decode in
+  hardware, so libmpv fell back to software decoding and the picture stuttered
+  while audio stayed fine ([#23]).
+- A muxed rendition is preferred on `Auto`, avoiding the cost of muxing two
+  network streams locally.
+- Malformed URLs now report themselves at initialization rather than surfacing
+  later as `Null check operator used on a null value` or
+  `type 'Null' is not a subtype of type 'Uri'`.
+- `youtube_explode_dart` raised to `^3.1.0`, which introduces the
+  `androidSdkless`, `mediaConnect` and `safari` clients the fallback chain uses.
+
+[#16]: https://github.com/ijashuzain/y_player/issues/16
+[#18]: https://github.com/ijashuzain/y_player/issues/18
+[#19]: https://github.com/ijashuzain/y_player/issues/19
+[#22]: https://github.com/ijashuzain/y_player/issues/22
+[#23]: https://github.com/ijashuzain/y_player/issues/23
+[#24]: https://github.com/ijashuzain/y_player/issues/24
+[#25]: https://github.com/ijashuzain/y_player/issues/25
+[#26]: https://github.com/ijashuzain/y_player/issues/26
+
 ## 2.0.6
 - Dependencies updated
 - Minor bug fixes

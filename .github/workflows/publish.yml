@@ -1,0 +1,65 @@
+name: Publish to pub.dev
+
+# pub.dev only permits automated publishing from a workflow triggered by
+# pushing a git tag. The pattern here must match the tag pattern configured
+# under Admin -> Automated publishing on pub.dev (v{{version}}).
+on:
+  push:
+    tags:
+      - 'v[0-9]+.[0-9]+.[0-9]+*'
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+
+    permissions:
+      # Required to mint the OIDC token that pub.dev exchanges for a short
+      # lived publishing credential. Without it the publish step gets a 401.
+      id-token: write
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      # Gate the release on the same checks that run locally. A tag that fails
+      # here is far cheaper to fix than a bad version on pub.dev, which can
+      # only be retracted within 7 days and never deleted.
+      - name: Analyze
+        run: flutter analyze
+
+      - name: Test
+        run: flutter test
+
+      - name: Verify tag matches pubspec version
+        run: |
+          set -euo pipefail
+          tag="${GITHUB_REF_NAME#v}"
+          pubspec="$(grep -m1 '^version:' pubspec.yaml | awk '{print $2}')"
+          if [ "$tag" != "$pubspec" ]; then
+            echo "::error::Tag v$tag does not match pubspec version $pubspec"
+            exit 1
+          fi
+          echo "Publishing version $pubspec"
+
+      # This is what dart-lang/setup-dart does internally. Doing it inline
+      # keeps a third-party action out of the credential path.
+      - name: Configure pub.dev credentials via OIDC
+        run: |
+          set -euo pipefail
+          PUB_TOKEN="$(curl -sSf \
+            -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+            "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=https://pub.dev" \
+            | jq -r '.value')"
+          echo "::add-mask::$PUB_TOKEN"
+          echo "PUB_TOKEN=$PUB_TOKEN" >> "$GITHUB_ENV"
+          flutter pub token add https://pub.dev --env-var PUB_TOKEN
+
+      - name: Publish
+        run: flutter pub publish --force

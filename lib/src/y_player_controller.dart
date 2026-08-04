@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io'; // Add for HTTP requests
 import 'dart:math'; // For min/max
 
@@ -6,20 +7,41 @@ import 'package:media_kit/media_kit.dart';
 import 'package:y_player/y_player.dart';
 import 'package:youtube_explode_dart/youtube_explode_dart.dart' as exp;
 
-/// Defines the client profile we are impersonating for YouTube extraction
-enum _ClientProfile { ios, android }
-
 /// Controller for managing the YouTube player.
 ///
 /// This class handles the initialization, playback control, and state management
 /// of the YouTube video player. It uses the youtube_explode_dart package to fetch
 /// video information and the media_kit package for playback.
 class YPlayerController {
-  /// User-Agent constants for identity synchronization between extractor and player
-  static const String _iosUserAgent = 
-      'Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148';
-  static const String _androidUserAgent = 
-      'com.google.android.youtube/17.36.4 (Linux; U; Android 12; GB) gzip';
+  /// Clients tried first, in one [exp.StreamClient.getManifest] call.
+  ///
+  /// `getManifest` iterates the whole list, merges the streams each client
+  /// returns into one deduplicated manifest, and HEAD-checks them so streams
+  /// that answer 403 are dropped. That makes a single call with several
+  /// clients strictly better than trying one client at a time.
+  ///
+  /// Ordering matters. Released 2.0.6 asked for `ios` then `tv`, and that
+  /// combination now fails outright with `VideoUnplayableException` on videos
+  /// that the Android clients still serve happily (issue #25). The Android
+  /// family leads for that reason: `androidVr` yields high quality streams and
+  /// `androidSdkless` is the variant documented as not needing a PO token.
+  /// `ios` stays last as a cheap extra source that needs no signature
+  /// deciphering.
+  static final List<exp.YoutubeApiClient> _primaryClients = [
+    exp.YoutubeApiClient.androidVr,
+    exp.YoutubeApiClient.androidSdkless,
+    exp.YoutubeApiClient.ios,
+  ];
+
+  /// Clients tried only if every primary client failed.
+  ///
+  /// `tv` gets through most age/embed restrictions; the other two expose HLS
+  /// muxed renditions that sometimes survive when DASH is withheld.
+  static final List<exp.YoutubeApiClient> _fallbackClients = [
+    exp.YoutubeApiClient.tv,
+    exp.YoutubeApiClient.mediaConnect,
+    exp.YoutubeApiClient.safari,
+  ];
 
   /// YouTube API client for fetching video information.
   final exp.YoutubeExplode _yt = exp.YoutubeExplode();
@@ -51,11 +73,17 @@ class YPlayerController {
   /// Whether to force the original audio track
   bool _forceOriginalAudio = false;
 
-  /// Current strategy being used for playback
-  _ClientProfile? _currentProfile;
+  /// Human readable reason for the last failure, if any.
+  ///
+  /// Exposed because "Error during initialization" on its own gives callers
+  /// nothing to act on when extraction breaks.
+  String? _errorMessage;
 
-  /// Retry count for error recovery
-  int _retryCount = 0;
+  /// Player event subscriptions, retained so they can be cancelled on dispose.
+  final List<StreamSubscription<dynamic>> _subscriptions = [];
+
+  /// Guards against the controller being torn down twice.
+  bool _disposed = false;
 
   /// Add this ValueNotifier to track status changes
   final ValueNotifier<YPlayerStatus> statusNotifier;
@@ -72,6 +100,17 @@ class YPlayerController {
       final oldest = _manifestCacheOrder.removeAt(0);
       _manifestCache.remove(oldest);
     }
+  }
+
+  /// Returns a cached manifest for [videoId], promoting it to most-recently
+  /// used. Returns null on a miss.
+  exp.StreamManifest? _cachedManifest(String videoId) {
+    final cached = _manifestCache[videoId];
+    if (cached != null) {
+      _manifestCacheOrder.remove(videoId);
+      _manifestCacheOrder.add(videoId);
+    }
+    return cached;
   }
 
   /// Constructs a YPlayerController with optional callback functions.
@@ -92,6 +131,43 @@ class YPlayerController {
 
   /// Get the current selected quality
   int get currentQuality => _currentQuality;
+
+  /// Gets whether original audio is being forced
+  bool get forceOriginalAudio => _forceOriginalAudio;
+
+  /// The reason the player last failed, or null if it has not failed.
+  String? get errorMessage => _errorMessage;
+
+  /// The id of the currently loaded video, or null before initialization.
+  String? get videoId => _currentVideoId;
+
+  /// Thumbnail URL for [youtubeUrlOrId], or null if it cannot be parsed.
+  ///
+  /// Static so callers can show artwork before the player has fetched
+  /// anything. `maxresdefault` is absent on some older uploads, so pass
+  /// `maxRes: false` for the always-present lower resolution image.
+  static String? thumbnailUrlFor(String youtubeUrlOrId, {bool maxRes = true}) {
+    try {
+      final id = exp.VideoId(youtubeUrlOrId).value;
+      final name = maxRes ? 'maxresdefault' : 'hqdefault';
+      return 'https://img.youtube.com/vi/$id/$name.jpg';
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// URL of the video's thumbnail, or null before initialization.
+  ///
+  /// Uses `maxresdefault`, which is absent on some older uploads; use
+  /// [thumbnailFallbackUrl] if it 404s.
+  String? get thumbnailUrl => _currentVideoId == null
+      ? null
+      : 'https://img.youtube.com/vi/$_currentVideoId/maxresdefault.jpg';
+
+  /// Always-present lower resolution thumbnail for [thumbnailUrl] to fall back to.
+  String? get thumbnailFallbackUrl => _currentVideoId == null
+      ? null
+      : 'https://img.youtube.com/vi/$_currentVideoId/hqdefault.jpg';
 
   /// Get list of available quality options
   List<QualityOption> getAvailableQualities() {
@@ -118,15 +194,154 @@ class YPlayerController {
       }
     }
 
-    // Sort by height (highest first, but keep Auto at top)
-    qualities.sublist(1).sort((a, b) => b.height.compareTo(a.height));
+    // Sort by height (highest first, but keep Auto at top). sublist() returns a
+    // copy, so the previous in-place sort of it was discarded.
+    final sorted = qualities.sublist(1)
+      ..sort((a, b) => b.height.compareTo(a.height));
+    return [qualities.first, ...sorted];
+  }
 
-    return qualities;
+  /// Fetches a stream manifest, falling back to the restricted-video clients.
+  ///
+  /// Throws with a description of what went wrong rather than letting a null
+  /// assertion blow up further downstream.
+  Future<exp.StreamManifest> _fetchManifest(exp.VideoId videoId) async {
+    final cached = _cachedManifest(videoId.value);
+    if (cached != null) {
+      if (!kReleaseMode) {
+        debugPrint('YPlayerController: Using cached manifest for $videoId');
+      }
+      return cached;
+    }
+
+    Object? firstError;
+    for (final clients in [_primaryClients, _fallbackClients]) {
+      try {
+        final manifest = await _yt.videos.streamsClient
+            .getManifest(videoId, ytClients: clients);
+        if (manifest.streams.isEmpty) {
+          throw Exception('No playable streams returned for "$videoId".');
+        }
+        _cacheManifest(videoId.value, manifest);
+        return manifest;
+      } catch (e) {
+        firstError ??= e;
+        if (!kReleaseMode) {
+          debugPrint('YPlayerController: Client set failed: $e');
+        }
+      }
+    }
+
+    throw Exception(
+      'Could not fetch any playable stream for "$videoId". '
+      'YouTube may have changed extraction, or the video may be private, '
+      'age restricted or region blocked. Last error: $firstError',
+    );
+  }
+
+  /// Picks the video stream for [height], preferring H.264 where possible.
+  ///
+  /// YouTube serves 1080p+ mainly as VP9/AV1. Many desktops (Windows GPUs in
+  /// particular) have no hardware decoder for those, so libmpv falls back to
+  /// software decoding and the picture stutters while audio stays fine.
+  /// Preferring an `avc1` rendition at the same resolution keeps playback
+  /// hardware accelerated.
+  exp.VideoStreamInfo? _selectVideoStream(
+    exp.StreamManifest manifest,
+    int height, {
+    required bool preferH264,
+  }) {
+    final all = manifest.videoOnly.toList();
+    if (all.isEmpty) return null;
+
+    var candidates = height == 0
+        ? all
+        : all.where((s) => s.videoResolution.height == height).toList();
+    if (candidates.isEmpty) candidates = all;
+
+    if (preferH264) {
+      final h264 = candidates
+          .where((s) => s.videoCodec.toLowerCase().startsWith('avc'))
+          .toList();
+      if (h264.isNotEmpty) candidates = h264;
+    }
+
+    // Highest resolution first when on auto, then highest bitrate.
+    candidates.sort((a, b) {
+      final byHeight =
+          b.videoResolution.height.compareTo(a.videoResolution.height);
+      if (height == 0 && byHeight != 0) return byHeight;
+      return b.bitrate.compareTo(a.bitrate);
+    });
+    return candidates.first;
+  }
+
+  /// Picks the audio stream, honouring [forceOriginalAudio].
+  exp.AudioStreamInfo? _selectAudioStream(exp.StreamManifest manifest) {
+    final all = manifest.audioOnly.toList();
+    if (all.isEmpty) return null;
+
+    if (_forceOriginalAudio) {
+      for (final stream in all) {
+        final track = stream.audioTrack;
+        if (track == null) continue;
+        // audioTrack's shape has moved between youtube_explode_dart releases,
+        // so match on its string form rather than a typed field.
+        if (track.toString().toLowerCase().contains('original')) {
+          return stream;
+        }
+      }
+    }
+    return all.withHighestBitrate();
+  }
+
+  /// Opens [manifest] on the player at [quality].
+  ///
+  /// Prefers a muxed rendition when on auto, because a single stream carrying
+  /// both tracks avoids the cost and desynchronisation risk of muxing two
+  /// separate network streams locally.
+  Future<void> _openManifest(
+    exp.StreamManifest manifest, {
+    required int quality,
+    required bool autoPlay,
+    Duration start = Duration.zero,
+  }) async {
+    final preferH264 =
+        Platform.isWindows || Platform.isLinux || Platform.isMacOS;
+
+    if (quality == 0 && manifest.muxed.isNotEmpty) {
+      final muxed = manifest.muxed.withHighestBitrate();
+      if (!kReleaseMode) {
+        debugPrint(
+            'YPlayerController: Using muxed stream ${muxed.qualityLabel}');
+      }
+      await _player.open(Media(muxed.url.toString(), start: start),
+          play: autoPlay);
+      return;
+    }
+
+    final video = _selectVideoStream(manifest, quality, preferH264: preferH264);
+    final audio = _selectAudioStream(manifest);
+    if (video == null) {
+      throw Exception('Manifest contained no video streams.');
+    }
+
+    if (!kReleaseMode) {
+      debugPrint('YPlayerController: Using ${video.videoResolution.height}p '
+          '(${video.videoCodec})');
+    }
+
+    await _player.open(Media(video.url.toString(), start: start),
+        play: autoPlay);
+
+    // media_kit's Media.extras is user metadata and never reaches libmpv, so
+    // the separate audio track has to be attached explicitly.
+    if (audio != null) {
+      await _player.setAudioTrack(AudioTrack.uri(audio.url.toString()));
+    }
   }
 
   /// Change video quality
-  /// Auto (height=0) uses HLS strategy for stability
-  /// Manual quality uses DASH strategy with audio-files for proper sync
   Future<void> setQuality(int height) async {
     if (_currentManifest == null || _currentVideoId == null) {
       if (!kReleaseMode) {
@@ -135,267 +350,34 @@ class YPlayerController {
       }
       return;
     }
-    if (_status == YPlayerStatus.loading) return;
     if (_currentQuality == height) return; // No-op if already at this quality
 
-    _currentQuality = height;
     final currentPosition = _player.state.position;
     final wasPlaying = _player.state.playing;
+    final previousQuality = _currentQuality;
+    _currentQuality = height;
 
     _setStatus(YPlayerStatus.loading);
     try {
-      final videoId = exp.VideoId(_currentVideoId!);
-      
-      // Strategy selection based on quality setting
-      if (height == 0) {
-        // Auto quality - prefer HLS (Tier 1)
-        if (!kReleaseMode) {
-          debugPrint('YPlayerController: Switching to Auto (HLS)');
-        }
-        
-        bool success = await _attemptPlayback(
-          videoId,
-          profile: _ClientProfile.ios,
-          autoPlay: false,
-        );
-        
-        if (!success) {
-          // Fallback to DASH
-          success = await _attemptPlayback(
-            videoId,
-            profile: _ClientProfile.android,
-            autoPlay: false,
-          );
-        }
-        
-        if (success) {
-          await _player.seek(currentPosition);
-          if (wasPlaying) {
-            await play();
-          }
-        } else {
-          throw Exception('Failed to switch to auto quality');
-        }
-      } else {
-        // Manual quality - use DASH (Tier 2) with audio-files
-        if (!kReleaseMode) {
-          debugPrint('YPlayerController: Changing quality to ${height}p (DASH)');
-        }
-        
-        // Get specific quality video stream
-        exp.VideoStreamInfo videoStreamInfo;
-        try {
-          videoStreamInfo = _currentManifest!.videoOnly
-              .where((s) => s.videoResolution.height == height)
-              .withHighestBitrate();
-        } catch (e) {
-          if (!kReleaseMode) {
-            debugPrint('YPlayerController: Requested quality not available, using highest');
-          }
-          videoStreamInfo = _currentManifest!.videoOnly.withHighestBitrate();
-        }
-        
-        // Get audio stream
-        exp.AudioStreamInfo audioStreamInfo;
-        if (_forceOriginalAudio) {
-          try {
-            audioStreamInfo = _currentManifest!.audioOnly.firstWhere((stream) {
-              if (stream.audioTrack != null) {
-                try {
-                  dynamic track = stream.audioTrack;
-                  String displayName = track.displayName?.toString() ?? '';
-                  return displayName.toLowerCase().contains('original');
-                } catch (e) {
-                  final trackString = stream.audioTrack.toString().toLowerCase();
-                  return trackString.contains('original');
-                }
-              }
-              return false;
-            });
-          } catch (e) {
-            audioStreamInfo = _currentManifest!.audioOnly.withHighestBitrate();
-          }
-        } else {
-          audioStreamInfo = _currentManifest!.audioOnly.withHighestBitrate();
-        }
-
-        // Use DASH strategy with audio-files for atomic loading
-        final media = Media(
-          videoStreamInfo.url.toString(),
-          httpHeaders: {
-            'User-Agent': _androidUserAgent,
-            'Referer': 'https://www.youtube.com/',
-          },
-          extras: {
-            'audio-files': audioStreamInfo.url.toString(),
-          },
-          start: currentPosition,
-        );
-
-        await _player.stop();
-        
-        // Note: User-Agent is already set in httpHeaders of the Media object
-        
-        await _player.open(media, play: wasPlaying);
-        
-        _currentProfile = _ClientProfile.android;
-      }
-      
+      await _player.stop();
+      await _openManifest(
+        _currentManifest!,
+        quality: height,
+        autoPlay: wasPlaying,
+        start: currentPosition,
+      );
       _setStatus(wasPlaying ? YPlayerStatus.playing : YPlayerStatus.paused);
       if (!kReleaseMode) {
         debugPrint('YPlayerController: Quality change complete');
       }
     } catch (e) {
+      _currentQuality = previousQuality;
+      _errorMessage = 'Failed to change quality: $e';
       if (!kReleaseMode) {
         debugPrint('YPlayerController: Error changing quality: $e');
       }
       _setStatus(YPlayerStatus.error);
     }
-  }
-
-  /// Internal strategy executor - implements tiered playback approach
-  /// Returns true if playback was successfully started
-  Future<bool> _attemptPlayback(
-    exp.VideoId videoId, {
-    required _ClientProfile profile,
-    required bool autoPlay,
-  }) async {
-    try {
-      // 1. Configure Extractor Client
-      final clientType = profile == _ClientProfile.ios 
-          ? [exp.YoutubeApiClient.ios] 
-          : [exp.YoutubeApiClient.android];
-
-      if (!kReleaseMode) {
-        debugPrint('YPlayer: Attempting ${profile.name} strategy');
-      }
-
-      final manifest = await _yt.videos.streamsClient.getManifest(
-        videoId, 
-        ytClients: clientType,
-      );
-      
-      // Cache the manifest
-      _currentManifest = manifest;
-      _cacheManifest(videoId.value, manifest);
-
-      // 2. Prepare Media Object based on Profile
-      Media? media;
-      
-      if (profile == _ClientProfile.ios && manifest.hls.isNotEmpty) {
-        // STRATEGY A: HLS Master Playlist
-        // Best for stability. One URL contains all audio/video/qualities.
-        final hlsUrl = manifest.hls.first.url.toString();
-        
-        media = Media(
-          hlsUrl,
-          httpHeaders: {
-            'User-Agent': _iosUserAgent,
-            'Referer': 'https://www.youtube.com/',
-          },
-        );
-        
-        if (!kReleaseMode) {
-          debugPrint('YPlayer: Using HLS Strategy - $hlsUrl');
-        }
-      } 
-      else if (profile == _ClientProfile.android) {
-        // STRATEGY B: DASH / Manual Mux
-        // Used for high quality (1080p+) if HLS is restricted or unavailable.
-        
-        // Get Video Stream (Muxed or Video-Only)
-        exp.StreamInfo videoStream;
-        if (_currentQuality == 0) {
-          videoStream = manifest.muxed.isNotEmpty 
-              ? manifest.muxed.withHighestBitrate() 
-              : manifest.videoOnly.withHighestBitrate();
-        } else {
-          // Simple quality selection logic
-          try {
-            videoStream = manifest.videoOnly
-                .where((s) => s.videoResolution.height == _currentQuality)
-                .withHighestBitrate();
-          } catch (e) {
-            videoStream = manifest.videoOnly.withHighestBitrate();
-          }
-        }
-
-        // Get Audio Stream
-        exp.AudioStreamInfo audioStream;
-        if (_forceOriginalAudio) {
-          // Try to find the original audio track
-          try {
-            audioStream = manifest.audioOnly.firstWhere((stream) {
-              if (stream.audioTrack != null) {
-                try {
-                  dynamic track = stream.audioTrack;
-                  String displayName = track.displayName?.toString() ?? '';
-                  return displayName.toLowerCase().contains('original');
-                } catch (e) {
-                  final trackString = stream.audioTrack.toString().toLowerCase();
-                  return trackString.contains('original');
-                }
-              }
-              return false;
-            });
-          } catch (e) {
-            // Fallback to highest bitrate
-            audioStream = manifest.audioOnly.withHighestBitrate();
-          }
-        } else {
-          audioStream = manifest.audioOnly.withHighestBitrate();
-        }
-
-        // CONSTRUCT THE MEDIA
-        // Critical: We use 'audio-files' extra to tell libmpv to load audio simultaneously.
-        // This is superior to setAudioTrack() as it buffers together.
-        media = Media(
-          videoStream.url.toString(),
-          httpHeaders: {
-            'User-Agent': _androidUserAgent,
-            'Referer': 'https://www.youtube.com/',
-          },
-          extras: {
-            'audio-files': audioStream.url.toString(),
-          }
-        );
-        
-        if (!kReleaseMode) {
-          debugPrint('YPlayer: Using DASH/Split Strategy');
-          debugPrint('YPlayer: Video URL: ${videoStream.url}');
-          debugPrint('YPlayer: Audio URL: ${audioStream.url}');
-        }
-      }
-
-      // 3. Open Playback
-      if (media != null) {
-        await _player.stop();
-        
-        // Note: media_kit 1.1.0 doesn't expose setProperty for libmpv
-        // The httpHeaders in the Media object should be sufficient
-        // for most cases as they're passed to the underlying player
-
-        await _player.open(media, play: autoPlay);
-        
-        _currentProfile = profile;
-        if (autoPlay) {
-          _setStatus(YPlayerStatus.playing);
-        } else {
-          _setStatus(YPlayerStatus.paused);
-        }
-        
-        if (!kReleaseMode) {
-          debugPrint('YPlayer: ${profile.name} strategy successful');
-        }
-        return true;
-      }
-      
-    } catch (e) {
-      if (!kReleaseMode) {
-        debugPrint("YPlayer: Strategy ${profile.name} failed: $e");
-      }
-    }
-    return false;
   }
 
   /// Estimate network speed (in bits per second) by downloading a small chunk of the video.
@@ -448,9 +430,8 @@ class YPlayerController {
 
   /// Initializes the player with the given YouTube URL and settings.
   ///
-  /// This method implements the Chameleon strategy with tiered playback:
-  /// Tier 1: HLS (iOS client) for stability and automatic quality
-  /// Tier 2: DASH (Android client) for manual quality selection
+  /// Fetches a stream manifest across several YouTube clients, then opens the
+  /// best rendition available.
   Future<void> initialize(
     String youtubeUrl, {
     bool autoPlay = true,
@@ -470,58 +451,57 @@ class YPlayerController {
 
     _setStatus(YPlayerStatus.loading);
     _forceOriginalAudio = forceOriginalAudio;
-    _retryCount = 0;
+    _errorMessage = null;
 
     try {
       if (!kReleaseMode) {
         debugPrint('YPlayerController: Fetching video info for $youtubeUrl');
       }
-      
-      final videoId = exp.VideoId(youtubeUrl);
+
+      // Parse up front so a malformed URL reports itself, instead of surfacing
+      // later as a null check or "Null is not a subtype of Uri" crash.
+      final exp.VideoId videoId;
+      try {
+        videoId = exp.VideoId(youtubeUrl);
+      } catch (_) {
+        throw Exception(
+          'Not a recognisable YouTube video URL or id: "$youtubeUrl"',
+        );
+      }
       _currentVideoId = videoId.value;
 
-      // --- TIER 1: Try HLS (iOS Strategy) ---
-      // HLS is preferred because it handles muxing/ABR natively on the server side.
-      bool playbackStarted = await _attemptPlayback(
-        videoId, 
-        profile: _ClientProfile.ios, 
+      final manifest = await _fetchManifest(videoId);
+      _currentManifest = manifest;
+
+      await _openManifest(
+        manifest,
+        quality: _currentQuality,
         autoPlay: autoPlay,
       );
 
-      // --- TIER 2: Fallback to Manual Muxing (Android Strategy) ---
-      if (!playbackStarted) {
-        if (!kReleaseMode) {
-          debugPrint('YPlayer: HLS failed or not found, falling back to Android DASH');
-        }
-        playbackStarted = await _attemptPlayback(
-          videoId, 
-          profile: _ClientProfile.android, 
-          autoPlay: autoPlay,
-        );
-      }
-
-      if (!playbackStarted) {
-        throw Exception("All playback strategies failed.");
-      }
-
       _lastInitializedUrl = youtubeUrl;
+      _setStatus(autoPlay ? YPlayerStatus.playing : YPlayerStatus.paused);
 
       // --- Choose best quality for internet if requested ---
-      // Note: This runs after initial playback starts
-      if (chooseBestQuality && _currentManifest != null) {
-        Future(() async {
-          final best = await chooseBestQualityForInternet(_currentManifest!);
-          if (best != _currentQuality && best > 0) {
-            _currentQuality = best;
+      // Runs after playback starts so the first frame is not delayed by a
+      // bandwidth probe.
+      if (chooseBestQuality) {
+        unawaited(Future(() async {
+          final best = await chooseBestQualityForInternet(manifest);
+          // setQuality compares against _currentQuality, so it must not be
+          // assigned here first or the call becomes a silent no-op.
+          if (best > 0 && best != _currentQuality && !_disposed) {
             await setQuality(best);
           }
-        });
+        }));
       }
 
       if (!kReleaseMode) {
-        debugPrint('YPlayerController: Initialization complete. Status: $_status');
+        debugPrint(
+            'YPlayerController: Initialization complete. Status: $_status');
       }
     } catch (e) {
+      _errorMessage = e.toString();
       if (!kReleaseMode) {
         debugPrint('YPlayerController: Error during initialization: $e');
       }
@@ -530,115 +510,32 @@ class YPlayerController {
   }
 
   /// Sets up listeners for various player events.
-  ///
-  /// This method initializes listeners for playback state changes,
-  /// completion events, position updates, errors with automatic retry, and more.
   void _setupPlayerListeners() {
-    _player.stream.playing.listen((playing) {
-      if (!kReleaseMode) {
-        debugPrint('YPlayerController: Playing state changed to $playing');
-      }
-      _setStatus(playing ? YPlayerStatus.playing : YPlayerStatus.paused);
-    });
-
-    _player.stream.completed.listen((completed) {
-      if (!kReleaseMode) {
-        debugPrint('YPlayerController: Playback completed: $completed');
-      }
-      if (completed) _setStatus(YPlayerStatus.stopped);
-    });
-
-    _player.stream.position.listen((position) {
-      // Don't log position updates in production for performance
-      // debugPrint('YPlayerController: Position updated: $position');
-      onProgressChanged?.call(position, _player.state.duration);
-    });
-
-    _player.stream.error.listen((error) async {
-      if (!kReleaseMode) {
-        debugPrint('YPlayerController: Error occurred: $error');
-      }
-      
-      // Check if error is related to network/403 and we can retry
-      final errorStr = error.toString().toLowerCase();
-      final is403Error = errorStr.contains('403') || 
-                         errorStr.contains('forbidden') ||
-                         errorStr.contains('failed to open') ||
-                         errorStr.contains('can not open');
-      
-      if (is403Error && _retryCount < 2 && _lastInitializedUrl != null && _currentVideoId != null) {
-        _retryCount++;
+    _subscriptions.addAll([
+      _player.stream.playing.listen((playing) {
+        _setStatus(playing ? YPlayerStatus.playing : YPlayerStatus.paused);
+      }),
+      _player.stream.completed.listen((completed) {
+        if (completed) _setStatus(YPlayerStatus.stopped);
+      }),
+      _player.stream.position.listen((position) {
+        onProgressChanged?.call(position, _player.state.duration);
+      }),
+      _player.stream.error.listen((error) {
+        _errorMessage = error.toString();
         if (!kReleaseMode) {
-          debugPrint('YPlayerController: Attempting retry ${_retryCount}/2 with alternate strategy');
+          debugPrint('YPlayerController: Error occurred: $error');
         }
-        
-        try {
-          final currentPosition = _player.state.position;
-          final wasPlaying = _player.state.playing;
-          final videoId = exp.VideoId(_currentVideoId!);
-          
-          // Try the alternate profile
-          final alternateProfile = _currentProfile == _ClientProfile.ios 
-              ? _ClientProfile.android 
-              : _ClientProfile.ios;
-          
-          final success = await _attemptPlayback(
-            videoId,
-            profile: alternateProfile,
-            autoPlay: false,
-          );
-          
-          if (success) {
-            await _player.seek(currentPosition);
-            if (wasPlaying) {
-              await play();
-            }
-            if (!kReleaseMode) {
-              debugPrint('YPlayerController: Retry successful with ${alternateProfile.name} strategy');
-            }
-            return;
-          }
-        } catch (e) {
-          if (!kReleaseMode) {
-            debugPrint('YPlayerController: Retry failed: $e');
-          }
-        }
-      }
-      
-      _setStatus(YPlayerStatus.error);
-    });
-
-    _player.stream.audioParams.listen((params) {
-      if (!kReleaseMode) {
-        debugPrint('YPlayerController: Audio params changed: $params');
-      }
-    });
-
-    _player.stream.audioDevice.listen((device) {
-      if (!kReleaseMode) {
-        debugPrint('YPlayerController: Audio device changed: $device');
-      }
-    });
-
-    _player.stream.track.listen((track) {
-      if (!kReleaseMode) {
-        debugPrint('YPlayerController: Track changed: $track');
-      }
-    });
-
-    _player.stream.tracks.listen((tracks) {
-      if (!kReleaseMode) {
-        debugPrint('YPlayerController: Available tracks: $tracks');
-      }
-    });
+        _setStatus(YPlayerStatus.error);
+      }),
+    ]);
   }
 
   /// Updates the player status and triggers the onStateChanged callback.
   void _setStatus(YPlayerStatus newStatus) {
+    if (_disposed) return;
     if (_status != newStatus) {
       _status = newStatus;
-      // Remove or comment out debugPrints in production for performance
-      // debugPrint('YPlayerController: Status changed to $newStatus');
       onStateChanged?.call(_status);
       statusNotifier.value = newStatus;
     }
@@ -646,8 +543,6 @@ class YPlayerController {
 
   /// Starts or resumes video playback.
   Future<void> play() async {
-    // Remove or comment out debugPrints in production for performance
-    // debugPrint('YPlayerController: Play requested');
     await _player.play();
   }
 
@@ -659,17 +554,37 @@ class YPlayerController {
 
   /// Pauses video playback.
   Future<void> pause() async {
-    // debugPrint('YPlayerController: Pause requested');
     await _player.pause();
   }
 
   /// Stops video playback and resets to the beginning.
   Future<void> stop() async {
-    // debugPrint('YPlayerController: Stop requested');
     await _player.stop();
   }
 
-  /// Enables background audio playback when screen is closed
+  /// Seeks to [position] in the current video.
+  ///
+  /// The position is clamped to the video's duration, so callers do not have
+  /// to guard against overshooting either end.
+  Future<void> seek(Duration position) async {
+    final total = _player.state.duration;
+    var target = position < Duration.zero ? Duration.zero : position;
+    if (total > Duration.zero && target > total) target = total;
+    await _player.seek(target);
+  }
+
+  /// Seeks forward by [delta] from the current position.
+  Future<void> seekForward([Duration delta = const Duration(seconds: 10)]) =>
+      seek(_player.state.position + delta);
+
+  /// Seeks backward by [delta] from the current position.
+  Future<void> seekBackward([Duration delta = const Duration(seconds: 10)]) =>
+      seek(_player.state.position - delta);
+
+  /// Sets the player volume, where 0 is muted and 100 is full volume.
+  Future<void> setVolume(double volume) async {
+    await _player.setVolume(volume.clamp(0, 100));
+  }
 
   /// Gets the current playback position.
   Duration get position => _player.state.position;
@@ -677,15 +592,22 @@ class YPlayerController {
   /// Gets the total duration of the video.
   Duration get duration => _player.state.duration;
 
-
-
-  /// Gets whether original audio is being forced
-  bool get forceOriginalAudio => _forceOriginalAudio;
-
   /// Disposes of all resources used by the controller.
-  void dispose() {
-    debugPrint('YPlayerController: Disposing');
-    _player.dispose();
+  ///
+  /// Cancelling the player subscriptions before disposing the player is what
+  /// stops late events from firing into a torn-down controller.
+  Future<void> dispose() async {
+    if (_disposed) return;
+    _disposed = true;
+    if (!kReleaseMode) {
+      debugPrint('YPlayerController: Disposing');
+    }
+    for (final subscription in _subscriptions) {
+      await subscription.cancel();
+    }
+    _subscriptions.clear();
+    statusNotifier.dispose();
     _yt.close();
+    await _player.dispose();
   }
 }

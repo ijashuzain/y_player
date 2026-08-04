@@ -65,6 +65,19 @@ class YPlayer extends StatefulWidget {
   /// Whether to force the original audio track (usually the first one).
   final bool forceOriginalAudio;
 
+  /// How the video is inscribed into the space allocated to the player.
+  ///
+  /// Defaults to [BoxFit.contain], which letterboxes rather than crops. Use
+  /// [BoxFit.cover] to fill the box at the cost of cutting off the edges.
+  final BoxFit fit;
+
+  /// Whether to show the video's YouTube thumbnail while it loads.
+  ///
+  /// The thumbnail is derived from [youtubeUrl] and rendered behind
+  /// [loadingWidget], so there is something to look at before the first frame
+  /// is decoded.
+  final bool showThumbnail;
+
   /// Constructs a YPlayer widget.
   ///
   /// The [youtubeUrl] parameter is required and should be a valid YouTube video URL.
@@ -88,6 +101,8 @@ class YPlayer extends StatefulWidget {
     this.fullscreenBottomButtonBarMargin,
     this.chooseBestQuality = true,
     this.forceOriginalAudio = false,
+    this.fit = BoxFit.contain,
+    this.showThumbnail = true,
   });
 
   @override
@@ -170,9 +185,73 @@ class YPlayerState extends State<YPlayer> with SingleTickerProviderStateMixin {
 
   @override
   void dispose() {
-    // Ensure the controller is properly disposed when the widget is removed
-    _controller.dispose();
+    // Ensure the controller is properly disposed when the widget is removed.
+    // dispose() is asynchronous now that it cancels player subscriptions, but
+    // State.dispose cannot await, so it is intentionally fire-and-forget.
+    unawaited(_controller.dispose());
     super.dispose();
+  }
+
+  /// Builds the loading state, optionally behind the video's thumbnail.
+  Widget _buildLoadingContent() {
+    final loading = Center(child: _cachedLoadingWidget);
+    if (!widget.showThumbnail) return loading;
+
+    final thumbnail = YPlayerController.thumbnailUrlFor(widget.youtubeUrl);
+    if (thumbnail == null) return loading;
+
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        Image.network(
+          thumbnail,
+          fit: BoxFit.cover,
+          // maxresdefault is missing for a lot of older uploads, so fall back
+          // to the resolution YouTube always generates.
+          errorBuilder: (context, _, __) {
+            final fallback = YPlayerController.thumbnailUrlFor(
+              widget.youtubeUrl,
+              maxRes: false,
+            );
+            if (fallback == null) return const SizedBox.shrink();
+            return Image.network(
+              fallback,
+              fit: BoxFit.cover,
+              errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+            );
+          },
+        ),
+        const ColoredBox(color: Colors.black38),
+        loading,
+      ],
+    );
+  }
+
+  /// The quality and speed buttons shown in the control bar.
+  ///
+  /// Each button is wrapped in a [Builder] so it resolves the context of the
+  /// tree it is actually rendered in. media_kit rebuilds these controls inside
+  /// the fullscreen route; closing over the inline context instead would push
+  /// the sheets onto the navigator *below* that route, leaving them invisible
+  /// in fullscreen and stacked up waiting on the way back out.
+  List<Widget> _buildBottomButtonBar() {
+    return [
+      const MaterialPositionIndicator(),
+      const Spacer(),
+      Builder(
+        builder: (buttonContext) => IconButton(
+          icon: const Icon(Icons.hd_outlined, color: Colors.white),
+          onPressed: () => _showQualitySelector(buttonContext),
+        ),
+      ),
+      Builder(
+        builder: (buttonContext) => IconButton(
+          icon: const Icon(Icons.speed, color: Colors.white),
+          onPressed: () => _showSpeedSlider(buttonContext),
+        ),
+      ),
+      const MaterialFullscreenButton(),
+    ];
   }
 
   @override
@@ -282,19 +361,7 @@ class YPlayerState extends State<YPlayer> with SingleTickerProviderStateMixin {
               const EdgeInsets.only(left: 16, right: 8),
           brightnessGesture: true,
           volumeGesture: true,
-          bottomButtonBar: [
-            const MaterialPositionIndicator(),
-            const Spacer(),
-            IconButton(
-              icon: const Icon(Icons.hd_outlined, color: Colors.white),
-              onPressed: () => _showQualitySelector(context),
-            ),
-            IconButton(
-              icon: const Icon(Icons.speed, color: Colors.white),
-              onPressed: () => _showSpeedSlider(context),
-            ),
-            const MaterialFullscreenButton()
-          ],
+          bottomButtonBar: _buildBottomButtonBar(),
         ),
         fullscreen: MaterialVideoControlsThemeData(
           volumeGesture: true,
@@ -306,25 +373,14 @@ class YPlayerState extends State<YPlayer> with SingleTickerProviderStateMixin {
           seekBarBufferColor: Colors.grey,
           seekBarPositionColor: widget.color ?? const Color(0xFFFF0000),
           seekBarThumbColor: widget.color ?? const Color(0xFFFF0000),
-          bottomButtonBar: [
-            const MaterialPositionIndicator(),
-            const Spacer(),
-            IconButton(
-              icon: const Icon(Icons.hd_outlined, color: Colors.white),
-              onPressed: () => _showQualitySelector(context),
-            ),
-            IconButton(
-              icon: const Icon(Icons.speed, color: Colors.white),
-              onPressed: () => _showSpeedSlider(context),
-            ),
-            const MaterialFullscreenButton()
-          ],
+          bottomButtonBar: _buildBottomButtonBar(),
         ),
         child: Video(
           controller: _videoController,
           controls: MaterialVideoControls,
           width: width,
           height: height,
+          fit: widget.fit,
           filterQuality: FilterQuality.high,
           onEnterFullscreen: () async {
             if (widget.onEnterFullScreen != null) {
@@ -343,8 +399,8 @@ class YPlayerState extends State<YPlayer> with SingleTickerProviderStateMixin {
         ),
       );
     } else if (status == YPlayerStatus.loading) {
-      // If the video is still loading, show a loading indicator
-      return Center(child: _cachedLoadingWidget);
+      // If the video is still loading, show the thumbnail and an indicator
+      return _buildLoadingContent();
     } else if (status == YPlayerStatus.error) {
       // If there was an error, show the error widget
       return Center(child: _cachedErrorWidget);
